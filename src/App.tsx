@@ -20,10 +20,7 @@ export default function App() {
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search)
-    const nextSettings: { baseUrl?: string; apiKey?: string; codexCli?: boolean; apiMode?: ApiMode } = {
-      codexCli: false,
-      apiMode: 'images',
-    }
+    const nextSettings: { baseUrl?: string; apiKey?: string; codexCli?: boolean; apiMode?: ApiMode } = {}
 
     const apiUrlParam = searchParams.get('apiUrl')
     if (apiUrlParam !== null) {
