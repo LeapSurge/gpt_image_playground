@@ -2,9 +2,9 @@ import { useEffect } from 'react'
 import { useStore } from '../store'
 import { readRuntimeEnv } from '../lib/runtimeEnv'
 
-const NOTICE_KEY = 'docker-breaking-change-api-url-split-v1'
+const NOTICE_KEY = 'docker-api-url-migration-notice-v1'
 
-export function useDockerBreakingChangeNotice() {
+export function useDockerApiUrlMigrationNotice() {
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
 
   useEffect(() => {
