@@ -28,6 +28,15 @@ export interface CallApiResult {
   actualParamsList?: Array<Partial<TaskParams> | undefined>
   /** 每张图片对应的 API 改写提示词 */
   revisedPrompts?: Array<string | undefined>
+  /** 托管网关返回的上游 Provider 信息 */
+  providerInfo?: {
+    key: string
+    label: string
+    kind: 'openai'
+    model: string
+  }
+  /** 调用完成后的剩余额度 */
+  remainingCredits?: number
 }
 
 export function isHttpUrl(value: unknown): value is string {

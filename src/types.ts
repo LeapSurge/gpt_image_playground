@@ -2,6 +2,7 @@
 
 export type ApiMode = 'images' | 'responses'
 export type ApiProvider = 'openai' | 'fal'
+export type ManagedAuthStatus = 'loading' | 'anonymous' | 'authenticated'
 
 export interface ApiProfile {
   id: string
@@ -28,6 +29,20 @@ export interface AppSettings {
   clearInputAfterSubmit: boolean
   profiles: ApiProfile[]
   activeProfileId: string
+}
+
+export interface ManagedCustomer {
+  id: string
+  email: string
+  name: string
+  remainingCredits: number
+  status: 'active' | 'disabled'
+}
+
+export interface ManagedSessionState {
+  status: ManagedAuthStatus
+  customer: ManagedCustomer | null
+  expiresAt: string | null
 }
 
 // ===== 任务参数 =====
@@ -214,4 +229,25 @@ export interface ExportData {
     createdAt?: number
     source?: 'upload' | 'generated' | 'mask'
   }>
+}
+
+export interface ManagedGatewayGenerateRequest {
+  prompt: string
+  params: TaskParams
+  inputImageDataUrls: string[]
+  maskDataUrl?: string
+}
+
+export interface ManagedGatewayGenerateResponse {
+  images: string[]
+  actualParams?: Partial<TaskParams>
+  actualParamsList?: Array<Partial<TaskParams> | undefined>
+  revisedPrompts?: Array<string | undefined>
+  provider: {
+    key: string
+    label: string
+    kind: 'openai'
+    model: string
+  }
+  remainingCredits: number
 }

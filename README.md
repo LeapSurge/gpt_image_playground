@@ -1,10 +1,28 @@
 # GPT Image Playground
 
-基于 OpenAI 图像生成接口的图片生成与编辑工具。提供简洁精美的 Web UI，支持文本生图、参考图与遮罩编辑，数据纯本地化存储，带来流畅的历史记录与参数管理体验。
+基于托管网关的图片生成与编辑工具。提供简洁精美的 Web UI，支持文本生图、参考图与遮罩编辑，历史记录与图片仍保存在浏览器本地，但上游 API、密钥、额度和登录由第一方网关统一管理。
 
 > 若需调用非 HTTPS 的内网或本地 HTTP API，请使用 GitHub Pages 版本或自行部署，Vercel 部署的体验版绑定的 `.dev` 域名因安全策略通常要求接口必须为 HTTPS。
 
 [**🌐 Vercel 在线体验**](https://gpt-image-playground.cooksleep.dev) &nbsp;|&nbsp; [**🌐 GitHub Pages 在线体验**](https://cooksleep.github.io/gpt_image_playground)
+
+---
+
+## 🔐 当前运行模式
+
+当前仓库默认是 **托管网关模式**：
+
+- 终端用户不再填写 `API URL`、`API Key` 或代理地址
+- 前端只请求同源的 `/api/*`
+- 登录使用「邮箱 + 访问码」
+- 剩余额度由服务端校验与扣减
+- 上游图片 API 由服务端自动选择和失败切换
+
+第一版限制：
+
+- 生成结果直接通过 `base64` 返回前端
+- 单次请求只支持 `1` 张输出图
+- 参考图请求体受 Vercel Functions `4.5 MB` 限制影响，过大的参考图会在前端提前拦截
 
 ---
 
@@ -75,16 +93,40 @@
 
 ## 🚀 部署与使用
 
-支持多种部署与开发方式。无论使用哪种方式，你都可以预设默认的 API 节点。
+支持多种部署与开发方式。当前版本的重点部署目标是 **Vercel + Vercel Functions**。
 
 <details>
 <summary><strong>▲ 方式一：Vercel 一键部署 (推荐)</strong></summary>
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FCookSleep%2Fgpt_image_playground&project-name=gpt-image-playground&repository-name=gpt-image-playground)
 
-点击上方按钮导入仓库即可，Vercel 会自动执行构建并部署静态文件。
+点击上方按钮导入仓库即可，Vercel 会自动执行构建并部署前端与 `api/` 函数。
 
-**配置默认 API URL**：在 Vercel 项目的 **Settings → Environment Variables** 中添加 `VITE_DEFAULT_API_URL`（如 `https://api.openai.com/v1`），然后重新部署即可生效。
+**至少需要配置这些环境变量：**
+
+- `MANAGED_GATEWAY_SESSION_SECRET`
+- `MANAGED_GATEWAY_PRIMARY_BASE_URL`
+- `MANAGED_GATEWAY_PRIMARY_API_KEY`
+- `MANAGED_GATEWAY_PRIMARY_MODEL`，例如 `gpt-image-2`
+
+**可选环境变量：**
+
+- `MANAGED_GATEWAY_PRIMARY_LABEL`
+- `MANAGED_GATEWAY_SECONDARY_BASE_URL`
+- `MANAGED_GATEWAY_SECONDARY_API_KEY`
+- `MANAGED_GATEWAY_SECONDARY_MODEL`
+- `MANAGED_GATEWAY_SECONDARY_LABEL`
+- `MANAGED_GATEWAY_CREDITS_PER_REQUEST`
+- `MANAGED_GATEWAY_MAX_INPUT_IMAGE_BYTES`
+- `DATABASE_URL`：部署环境建议提供，用于持久化客户、会话和额度
+
+**管理员操作：**
+
+部署完成后，使用管理员脚本创建客户并发放访问码：
+
+```bash
+npm run gateway:admin -- create-customer --email customer@example.com --name "Customer" --credits 100
+```
 
 **配置自动更新**：
 
@@ -149,22 +191,33 @@ services:
 
 **1. 环境准备与启动**
 
-你可以在项目根目录新建 `.env.local` 文件配置默认 API URL（如 `VITE_DEFAULT_API_URL=https://api.openai.com/v1`）。然后安装依赖并启动：
+本地开发不强制依赖数据库。若未提供 `DATABASE_URL`，项目会退回到本地 JSON 文件存储（默认 `.local-managed-gateway-store.json`，已加入 `.gitignore`）。
+
+建议至少配置：
+
+```bash
+MANAGED_GATEWAY_SESSION_SECRET=dev-session-secret
+MANAGED_GATEWAY_PRIMARY_BASE_URL=https://your-provider.example/v1
+MANAGED_GATEWAY_PRIMARY_API_KEY=sk-xxxx
+MANAGED_GATEWAY_PRIMARY_MODEL=gpt-image-2
+```
+
+然后安装依赖并启动：
 
 ```bash
 npm install
 npm run dev
 ```
 
-**2. 本地开发跨域代理 (可选)**
+**2. 初始化本地客户账号**
 
-如果在本地开发时遇到浏览器的 CORS 限制，可开启本地代理转发：
+创建一个本地客户并拿到访问码：
 
 ```bash
-cp dev-proxy.config.example.json dev-proxy.config.json
+npm run gateway:admin -- create-customer --email demo@example.com --name Demo --credits 10
 ```
 
-修改 `dev-proxy.config.json`，将 `target` 设置为真实的图片接口地址。重启开发服务器后，在页面设置中开启 **API 代理** 即可（请求将被转发如 `http://localhost:5173/api-proxy/... -> target/...`）。此功能仅在 `npm run dev` 阶段生效，不会影响打包产物。
+随后在页面里用该邮箱和访问码登录即可。
 
 **3. 构建静态产物**
 
@@ -178,33 +231,27 @@ npm run build
 
 ---
 
-## 🛠️ API 配置与 URL 传参
+## 🧾 账户与运维
 
-点击页面右上角的 **设置 (⚙️)**，可以配置模型、密钥与其他参数。
+当前版本不再支持通过前端 URL 参数注入上游 `apiUrl`、`apiKey` 或 provider 设置。
 
-- **双接口模式**：支持 `Images API` (需填写 GPT Image 模型，如 `gpt-image-2`) 和 `Responses API` (需填写支持该工具的文本模型，如 `gpt-5.5`)。
-- **API 代理**：开启后，浏览器将请求同源的 `/api-proxy/` 路径，交由当前部署环境（Docker 或 本地开发）代理转发至真实 API，以绕开浏览器 CORS 限制。
-- **Codex CLI 模式**：如果你在使用源于 Codex CLI 的 API，可以在 `API URL` 右侧开启该模式。开启后会禁用不支持的 `quality` 参数，Images API 的多图生成也将改为并发单图请求。此外，提示词文本开头会加入简短的防改写指令，防止模型偏离原意。（注：Responses API 无论是否开启此模式，都会默认加入防改写指令）。
-- **智能诊断提示**：当应用检测到接口返回的提示词被强制改写，或缺少官方 API 常规返回的参数时，会主动提示你是否针对当前配置组合开启 Codex CLI 模式。
+面向管理员的常用脚本：
 
-### URL 传参快速填充
+```bash
+# 创建客户
+npm run gateway:admin -- create-customer --email customer@example.com --name "Customer" --credits 100
 
-应用支持通过 URL 查询参数快速填入配置，非常适合创建书签或集成分享：
+# 给客户加额度
+npm run gateway:admin -- grant-credits --customer-id customer_xxx --credits 50 --reason "manual recharge"
 
-- `?apiUrl=https://你的代理地址.com`
-- `?apiKey=sk-xxxx`
-- `?apiMode=images` 或 `?apiMode=responses`（未传时默认为 `images`）
-- `?codexCli=true`（强制开启 Codex CLI 模式）
-
-例如，集成到 New API 的聊天系统：
-
-```text
-https://gpt-image-playground.cooksleep.dev?apiUrl={address}&apiKey={key}
+# 查看客户
+npm run gateway:admin -- list-customers
 ```
 
-```text
-https://cooksleep.github.io/gpt_image_playground?apiUrl={address}&apiKey={key}
-```
+面向终端用户的操作只有两步：
+
+1. 用管理员分配的邮箱和访问码登录
+2. 直接生成图片，额度和上游路由由系统自动处理
 
 ---
 

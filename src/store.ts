@@ -7,6 +7,7 @@ import type {
   MaskDraft,
   TaskRecord,
   ExportData,
+  ManagedSessionState,
 } from './types'
 import { DEFAULT_PARAMS } from './types'
 import { DEFAULT_SETTINGS, getActiveApiProfile, mergeImportedSettings, normalizeSettings, validateApiProfile } from './lib/apiProfiles'
@@ -23,10 +24,12 @@ import {
   storeImage,
 } from './lib/db'
 import { callImageApi } from './lib/api'
+import { callManagedGatewayApi, fetchManagedSession } from './lib/managedGatewayClient'
 import { getFalErrorMessage, getFalQueuedImageResult, getFalQueueStatus } from './lib/falAiImageApi'
 import { validateMaskMatchesImage } from './lib/canvasImage'
 import { orderInputImagesForMask } from './lib/mask'
-import { getChangedParams, normalizeParamsForSettings } from './lib/paramCompatibility'
+import { getChangedParams } from './lib/paramCompatibility'
+import { MANAGED_REQUEST_TIMEOUT_SECONDS, normalizeManagedGatewayParams } from './lib/managedGatewayCapabilities'
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate'
 
 // ===== Image cache =====
@@ -74,6 +77,12 @@ interface AppState {
   setSettings: (s: Partial<AppSettings>) => void
   dismissedCodexCliPrompts: string[]
   dismissCodexCliPrompt: (key: string) => void
+
+  // 账户
+  session: ManagedSessionState
+  setSession: (session: ManagedSessionState) => void
+  showAuthDialog: boolean
+  setShowAuthDialog: (value: boolean) => void
 
   // 输入
   prompt: string
@@ -182,6 +191,14 @@ export const useStore = create<AppState>()(
           ? st.dismissedCodexCliPrompts
           : [...st.dismissedCodexCliPrompts, key],
       })),
+      session: {
+        status: 'loading',
+        customer: null,
+        expiresAt: null,
+      },
+      setSession: (session) => set({ session }),
+      showAuthDialog: false,
+      setShowAuthDialog: (showAuthDialog) => set({ showAuthDialog }),
 
       // Input
       prompt: '',
@@ -384,7 +401,50 @@ function scheduleOpenAIWatchdog(taskId: string, timeoutSeconds: number) {
   openAIWatchdogTimers.set(taskId, timer)
 }
 
+export async function refreshManagedSession() {
+  try {
+    const session = await fetchManagedSession()
+    useStore.getState().setSession(session)
+    return session
+  } catch (error) {
+    useStore.getState().setSession({
+      status: 'anonymous',
+      customer: null,
+      expiresAt: null,
+    })
+    throw error
+  }
+}
+
+function validateManagedSubmissionSession() {
+  const { session, showToast, setShowAuthDialog } = useStore.getState()
+  const customer = session.customer
+
+  if (session.status !== 'authenticated' || !customer) {
+    showToast('请先登录客户账号', 'error')
+    setShowAuthDialog(true)
+    return false
+  }
+
+  if (customer.status !== 'active') {
+    showToast('当前账号已被停用，请联系管理员', 'error')
+    return false
+  }
+
+  if (customer.remainingCredits <= 0) {
+    showToast('当前账号额度不足，请联系管理员充值', 'error')
+    return false
+  }
+
+  return true
+}
+
 export function showCodexCliPrompt(force = false, reason = '接口返回的提示词已被改写') {
+  void force
+  void reason
+  // 托管网关模式下不再暴露上游 API 配置，也不再提示切换客户端兼容模式。
+  return
+
   const state = useStore.getState()
   const settings = state.settings
   const promptKey = getCodexCliPromptKey(settings)
@@ -508,6 +568,7 @@ async function recoverFalTask(taskId: string) {
 
 /** 初始化：从 IndexedDB 加载任务和图片缓存，清理孤立图片 */
 export async function initStore() {
+  void refreshManagedSession().catch(() => undefined)
   const storedTasks = await getAllTasks()
   const { tasks, interruptedTasks } = markInterruptedOpenAIRunningTasks(storedTasks)
   await Promise.all(interruptedTasks.map((task) => putTask(task)))
@@ -558,13 +619,6 @@ export async function submitTask(options: { allowFullMask?: boolean } = {}) {
   const { settings, prompt, inputImages, maskDraft, params, showToast, setConfirmDialog } =
     useStore.getState()
 
-  const activeProfile = getActiveApiProfile(settings)
-  if (validateApiProfile(activeProfile)) {
-    showToast(`请先完善当前 Provider：${validateApiProfile(activeProfile)}`, 'error')
-    useStore.getState().setShowSettings(true)
-    return
-  }
-
   if (!prompt.trim()) {
     showToast('请输入提示词', 'error')
     return
@@ -602,12 +656,16 @@ export async function submitTask(options: { allowFullMask?: boolean } = {}) {
     }
   }
 
+  if (!validateManagedSubmissionSession()) {
+    return
+  }
+
   // 持久化输入图片到 IndexedDB（此前只在内存缓存中）
   for (const img of orderedInputImages) {
     await storeImage(img.dataUrl)
   }
 
-  const normalizedParams = normalizeParamsForSettings(params, settings)
+  const normalizedParams = normalizeManagedGatewayParams(params)
   const normalizedParamPatch = getChangedParams(params, normalizedParams)
   if (Object.keys(normalizedParamPatch).length) {
     useStore.getState().setParams(normalizedParamPatch)
@@ -618,9 +676,6 @@ export async function submitTask(options: { allowFullMask?: boolean } = {}) {
     id: taskId,
     prompt: prompt.trim(),
     params: normalizedParams,
-    apiProvider: activeProfile.provider,
-    apiProfileName: activeProfile.name,
-    apiModel: activeProfile.model,
     inputImageIds: orderedInputImages.map((i) => i.id),
     maskTargetImageId,
     maskImageId,
@@ -649,15 +704,10 @@ async function executeTask(taskId: string) {
   const { settings } = useStore.getState()
   const task = useStore.getState().tasks.find((t) => t.id === taskId)
   if (!task) return
-  const activeProfile = getActiveApiProfile(settings)
-  const taskProvider = task.apiProvider ?? activeProfile.provider
-  let falRequestInfo: { requestId: string; endpoint: string } | null = task.falRequestId && task.falEndpoint
-    ? { requestId: task.falRequestId, endpoint: task.falEndpoint }
-    : null
+  const taskProvider = task.apiProvider ?? 'openai'
+  const falRequestInfo: { requestId: string; endpoint: string } | null = null
 
-  if (taskProvider === 'openai') {
-    scheduleOpenAIWatchdog(taskId, activeProfile.timeout)
-  }
+  scheduleOpenAIWatchdog(taskId, MANAGED_REQUEST_TIMEOUT_SECONDS)
 
   try {
     // 获取输入图片 data URLs
@@ -673,20 +723,12 @@ async function executeTask(taskId: string) {
       if (!maskDataUrl) throw new Error('遮罩图片已不存在')
     }
 
-    const result = await callImageApi({
+    const result = await callManagedGatewayApi({
       settings,
       prompt: task.prompt,
       params: task.params,
       inputImageDataUrls: inputDataUrls,
       maskDataUrl,
-      onFalRequestEnqueued: (request) => {
-        falRequestInfo = request
-        updateTaskInStore(taskId, {
-          falRequestId: request.requestId,
-          falEndpoint: request.endpoint,
-          falRecoverable: false,
-        })
-      },
     })
 
     const latestBeforeSuccess = useStore.getState().tasks.find((t) => t.id === taskId)
@@ -699,7 +741,7 @@ async function executeTask(taskId: string) {
       imageCache.set(imgId, dataUrl)
       outputIds.push(imgId)
     }
-    const shouldStoreApiResponseMetadata = taskProvider !== 'fal'
+    const shouldStoreApiResponseMetadata = true
     const actualParamsByImage = shouldStoreApiResponseMetadata ? result.actualParamsList?.reduce<Record<string, Partial<TaskParams>>>((acc, params, index) => {
       const imgId = outputIds[index]
       if (imgId && params && Object.keys(params).length > 0) acc[imgId] = params
@@ -710,23 +752,15 @@ async function executeTask(taskId: string) {
       if (imgId && revisedPrompt && revisedPrompt.trim()) acc[imgId] = revisedPrompt
       return acc
     }, {}) : undefined
-    const promptWasRevised = shouldStoreApiResponseMetadata && result.revisedPrompts?.some(
-      (revisedPrompt) => revisedPrompt?.trim() && revisedPrompt.trim() !== task.prompt.trim(),
-    )
-    const hasRevisedPromptValue = shouldStoreApiResponseMetadata && result.revisedPrompts?.some((revisedPrompt) => revisedPrompt?.trim())
-    if (taskProvider === 'openai' && !activeProfile.codexCli) {
-      if (promptWasRevised) {
-        showCodexCliPrompt()
-      } else if (!hasRevisedPromptValue) {
-        showCodexCliPrompt(false, '接口没有返回官方 API 会返回的部分信息')
-      }
-    }
 
     // 更新任务
     const latestBeforeUpdate = useStore.getState().tasks.find((t) => t.id === taskId)
     if (!latestBeforeUpdate || latestBeforeUpdate.status !== 'running') return
     clearOpenAIWatchdogTimer(taskId)
     updateTaskInStore(taskId, {
+      apiProvider: result.providerInfo?.kind ?? 'openai',
+      apiProfileName: result.providerInfo?.label,
+      apiModel: result.providerInfo?.model,
       outputImages: outputIds,
       actualParams: shouldStoreApiResponseMetadata ? { ...result.actualParams, n: outputIds.length } : undefined,
       actualParamsByImage: actualParamsByImage && Object.keys(actualParamsByImage).length > 0 ? actualParamsByImage : undefined,
@@ -736,6 +770,19 @@ async function executeTask(taskId: string) {
       elapsed: Date.now() - task.createdAt,
       falRecoverable: false,
     })
+
+    if (typeof result.remainingCredits === 'number') {
+      const session = useStore.getState().session
+      if (session.status === 'authenticated' && session.customer) {
+        useStore.getState().setSession({
+          ...session,
+          customer: {
+            ...session.customer,
+            remainingCredits: result.remainingCredits,
+          },
+        })
+      }
+    }
 
     useStore.getState().showToast(`生成完成，共 ${outputIds.length} 张图片`, 'success')
     const currentMask = useStore.getState().maskDraft
@@ -751,29 +798,16 @@ async function executeTask(taskId: string) {
     clearOpenAIWatchdogTimer(taskId)
     const latestTask = useStore.getState().tasks.find((t) => t.id === taskId) ?? task
     if (latestTask.status !== 'running') return
-    const latestFalRequestInfo = falRequestInfo ?? (latestTask.falRequestId && latestTask.falEndpoint
-      ? { requestId: latestTask.falRequestId, endpoint: latestTask.falEndpoint }
-      : null)
-    if (latestTask.apiProvider === 'fal' && latestFalRequestInfo && isFalConnectionRecoverableError(err)) {
-      updateTaskInStore(taskId, {
-        status: 'error',
-        error: '与 fal.ai 的连接已断开，连接恢复后会自动查询任务结果。',
-        falRequestId: latestFalRequestInfo.requestId,
-        falEndpoint: latestFalRequestInfo.endpoint,
-        falRecoverable: true,
-        finishedAt: Date.now(),
-        elapsed: Date.now() - task.createdAt,
-      })
-      scheduleFalRecovery(taskId)
-    } else {
-      updateTaskInStore(taskId, {
-        status: 'error',
-        error: err instanceof Error ? err.message : String(err),
-        falRecoverable: false,
-        finishedAt: Date.now(),
-        elapsed: Date.now() - task.createdAt,
-      })
-      useStore.getState().setDetailTaskId(taskId)
+    updateTaskInStore(taskId, {
+      status: 'error',
+      error: err instanceof Error ? err.message : String(err),
+      falRecoverable: false,
+      finishedAt: Date.now(),
+      elapsed: Date.now() - task.createdAt,
+    })
+    useStore.getState().setDetailTaskId(taskId)
+    if (err instanceof Error && /登录|额度|会话|session|401|403/i.test(err.message)) {
+      void refreshManagedSession().catch(() => undefined)
     }
   } finally {
     // 释放输入图片的内存缓存（已持久化到 IndexedDB，后续按需从 DB 加载）
@@ -795,17 +829,13 @@ export function updateTaskInStore(taskId: string, patch: Partial<TaskRecord>) {
 
 /** 重试失败的任务：创建新任务并执行 */
 export async function retryTask(task: TaskRecord) {
-  const { settings } = useStore.getState()
-  const activeProfile = getActiveApiProfile(settings)
-  const normalizedParams = normalizeParamsForSettings(task.params, settings)
+  if (!validateManagedSubmissionSession()) return
+  const normalizedParams = normalizeManagedGatewayParams(task.params)
   const taskId = genId()
   const newTask: TaskRecord = {
     id: taskId,
     prompt: task.prompt,
     params: normalizedParams,
-    apiProvider: activeProfile.provider,
-    apiProfileName: activeProfile.name,
-    apiModel: activeProfile.model,
     inputImageIds: [...task.inputImageIds],
     maskTargetImageId: task.maskTargetImageId ?? null,
     maskImageId: task.maskImageId ?? null,
@@ -826,9 +856,9 @@ export async function retryTask(task: TaskRecord) {
 
 /** 复用配置 */
 export async function reuseConfig(task: TaskRecord) {
-  const { settings, setPrompt, setParams, setInputImages, setMaskDraft, clearMaskDraft, showToast } = useStore.getState()
+  const { setPrompt, setParams, setInputImages, setMaskDraft, clearMaskDraft, showToast } = useStore.getState()
   setPrompt(task.prompt)
-  setParams(normalizeParamsForSettings(task.params, settings))
+  setParams(normalizeManagedGatewayParams(task.params))
 
   // 恢复输入图片
   const imgs: InputImage[] = []

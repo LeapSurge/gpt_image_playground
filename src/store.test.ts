@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_PARAMS } from './types'
 import { DEFAULT_SETTINGS } from './lib/apiProfiles'
 import type { TaskRecord } from './types'
-import { editOutputs, markInterruptedOpenAIRunningTasks, submitTask, useStore } from './store'
+import { editOutputs, markInterruptedOpenAIRunningTasks, retryTask, submitTask, useStore } from './store'
 
 const imageA = { id: 'image-a', dataUrl: 'data:image/png;base64,a' }
 
@@ -28,6 +28,11 @@ describe('mask draft lifecycle in store actions', () => {
   beforeEach(() => {
     useStore.setState({
       settings: { ...DEFAULT_SETTINGS, apiKey: 'test-key' },
+      session: {
+        status: 'anonymous',
+        customer: null,
+        expiresAt: null,
+      },
       prompt: 'prompt',
       inputImages: [],
       maskDraft: null,
@@ -40,6 +45,7 @@ describe('mask draft lifecycle in store actions', () => {
       showSettings: false,
       toast: null,
       confirmDialog: null,
+      showAuthDialog: false,
       showToast: vi.fn(),
       setConfirmDialog: vi.fn(),
     })
@@ -74,6 +80,20 @@ describe('mask draft lifecycle in store actions', () => {
     await submitTask()
 
     expect(useStore.getState().maskDraft).toBeNull()
+  })
+
+  it('opens the auth dialog instead of creating a task when submit is anonymous', async () => {
+    await submitTask()
+
+    expect(useStore.getState().tasks).toEqual([])
+    expect(useStore.getState().showAuthDialog).toBe(true)
+  })
+
+  it('blocks retry when the managed session is not allowed to generate', async () => {
+    await retryTask(task({ status: 'error', error: 'boom' }))
+
+    expect(useStore.getState().tasks).toEqual([])
+    expect(useStore.getState().showAuthDialog).toBe(true)
   })
 })
 

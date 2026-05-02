@@ -2,8 +2,8 @@ import { useRef, useEffect, useCallback, useState, useMemo, type ReactNode } fro
 import { createPortal } from 'react-dom'
 import { useStore, submitTask, addImageFromFile, updateTaskInStore, removeMultipleTasks } from '../store'
 import { DEFAULT_PARAMS } from '../types'
-import { getActiveApiProfile } from '../lib/apiProfiles'
-import { DEFAULT_FAL_IMAGE_SIZE, getChangedParams, getOutputImageLimitForSettings, normalizeParamsForSettings } from '../lib/paramCompatibility'
+import { getChangedParams } from '../lib/paramCompatibility'
+import { MANAGED_OUTPUT_IMAGE_LIMIT, normalizeManagedGatewayParams } from '../lib/managedGatewayCapabilities'
 import { normalizeImageSize } from '../lib/size'
 import { createMaskPreviewDataUrl } from '../lib/canvasImage'
 import Select from './Select'
@@ -40,8 +40,8 @@ export default function InputBar() {
   const clearInputImages = useStore((s) => s.clearInputImages)
   const params = useStore((s) => s.params)
   const setParams = useStore((s) => s.setParams)
-  const settings = useStore((s) => s.settings)
-  const setShowSettings = useStore((s) => s.setShowSettings)
+  const session = useStore((s) => s.session)
+  const setShowAuthDialog = useStore((s) => s.setShowAuthDialog)
   const setLightboxImageId = useStore((s) => s.setLightboxImageId)
   const showToast = useStore((s) => s.showToast)
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
@@ -153,31 +153,30 @@ export default function InputBar() {
   const dragCounter = useRef(0)
   const isMobile = useIsMobile()
 
-  const canSubmit = prompt.trim() && settings.apiKey
-  const activeProfile = getActiveApiProfile(settings)
-  const activeProvider = activeProfile.provider
-  const isFalProvider = activeProvider === 'fal'
-  const moderationDisabled = settings.apiMode === 'responses' || isFalProvider
-  const compressionDisabled = params.output_format === 'png' || isFalProvider
-  const outputImageLimit = getOutputImageLimitForSettings(settings)
-  const nLimitHintText = isFalProvider
-    ? `fal.ai 最大请求数量为 ${outputImageLimit}`
-    : `OpenAI 最大请求数量为 ${outputImageLimit}`
-  const displaySize = isFalProvider && params.size === 'auto'
-    ? DEFAULT_FAL_IMAGE_SIZE
-    : normalizeImageSize(params.size) || DEFAULT_PARAMS.size
-  const qualityOptions = isFalProvider
-    ? [
-        { label: 'low', value: 'low' },
-        { label: 'medium', value: 'medium' },
-        { label: 'high', value: 'high' },
-      ]
-    : [
-        { label: 'auto', value: 'auto' },
-        { label: 'low', value: 'low' },
-        { label: 'medium', value: 'medium' },
-        { label: 'high', value: 'high' },
-      ]
+  const isLoggedIn = session.status === 'authenticated' && Boolean(session.customer)
+  const isAccountActive = isLoggedIn && session.customer?.status === 'active'
+  const isOutOfCredits = Boolean(isAccountActive && session.customer && session.customer.remainingCredits <= 0)
+  const canGenerate = Boolean(isAccountActive && !isOutOfCredits)
+  const canSubmit = Boolean(prompt.trim() && canGenerate)
+  const submitBlockedReason =
+    !isLoggedIn
+      ? '请先登录客户账号后再生成'
+      : !isAccountActive
+        ? '当前账号已被停用，请联系管理员'
+        : isOutOfCredits
+          ? '当前账号额度不足，请联系管理员充值'
+          : ''
+  const moderationDisabled = false
+  const compressionDisabled = params.output_format === 'png'
+  const outputImageLimit = MANAGED_OUTPUT_IMAGE_LIMIT
+  const nLimitHintText = `托管网关当前仅支持 ${outputImageLimit} 张`
+  const displaySize = normalizeImageSize(params.size) || DEFAULT_PARAMS.size
+  const qualityOptions = [
+    { label: 'auto', value: 'auto' },
+    { label: 'low', value: 'low' },
+    { label: 'medium', value: 'medium' },
+    { label: 'high', value: 'high' },
+  ]
   const atImageLimit = inputImages.length >= API_MAX_IMAGES
   const maskTargetImage = maskDraft
     ? inputImages.find((img) => img.id === maskDraft.targetImageId) ?? null
@@ -185,6 +184,22 @@ export default function InputBar() {
   const referenceImages = maskTargetImage
     ? inputImages.filter((img) => img.id !== maskTargetImage.id)
     : inputImages
+
+  const handleSubmitAttempt = useCallback(() => {
+    if (!isLoggedIn) {
+      setShowAuthDialog(true)
+      return
+    }
+    if (!isAccountActive) {
+      showToast('当前账号已被停用，请联系管理员', 'error')
+      return
+    }
+    if (isOutOfCredits) {
+      showToast('当前账号额度不足，请联系管理员充值', 'error')
+      return
+    }
+    void submitTask()
+  }, [isAccountActive, isLoggedIn, isOutOfCredits, setShowAuthDialog, showToast])
 
   useEffect(() => {
     setOutputCompressionInput(
@@ -197,12 +212,18 @@ export default function InputBar() {
   }, [params.n])
 
   useEffect(() => {
-    const normalizedParams = normalizeParamsForSettings(params, settings)
+    const normalizedParams = normalizeManagedGatewayParams(params)
     const patch = getChangedParams(params, normalizedParams)
     if (Object.keys(patch).length) {
       setParams(patch)
     }
-  }, [params, settings, setParams])
+  }, [params, setParams])
+
+  useEffect(() => {
+    if (params.n !== 1) {
+      setParams({ n: 1 })
+    }
+  }, [params.n, setParams])
 
   useEffect(() => () => {
     if (compressionHintTimerRef.current != null) {
@@ -360,11 +381,11 @@ export default function InputBar() {
   }
 
   const showQualityHint = () => {
-    if (settings.codexCli || isFalProvider) setQualityHintVisible(true)
+    setQualityHintVisible(true)
   }
 
   const showSizeHint = () => {
-    if (isFalProvider) setSizeHintVisible(true)
+    setSizeHintVisible(true)
   }
 
   const hideSizeHint = () => {
@@ -380,7 +401,6 @@ export default function InputBar() {
   }
 
   const startSizeHintTouch = () => {
-    if (!isFalProvider) return
     sizeHintTimerRef.current = window.setTimeout(() => {
       setSizeHintVisible(true)
       sizeHintTimerRef.current = null
@@ -400,7 +420,6 @@ export default function InputBar() {
   }
 
   const startQualityHintTouch = () => {
-    if (!settings.codexCli && !isFalProvider) return
     qualityHintTimerRef.current = window.setTimeout(() => {
       setQualityHintVisible(true)
       qualityHintTimerRef.current = null
@@ -948,8 +967,8 @@ export default function InputBar() {
           {displaySize}
         </button>
         <ButtonTooltip
-          visible={isFalProvider && sizeHintVisible}
-          text={<>fal.ai 不支持 <code className="rounded bg-white/10 px-1 py-0.5 font-mono">auto</code> 参数</>}
+          visible={sizeHintVisible}
+          text="尺寸会在提交前被规整到模型可接受的安全范围。"
         />
       </label>
       <label
@@ -963,19 +982,14 @@ export default function InputBar() {
       >
         <span className="text-gray-400 dark:text-gray-500 ml-1">质量</span>
         <Select
-          value={settings.codexCli ? 'auto' : isFalProvider && params.quality === 'auto' ? 'high' : params.quality}
-          onChange={(val) => {
-            if (!settings.codexCli) setParams({ quality: val as any })
-          }}
+          value={params.quality}
+          onChange={(val) => setParams({ quality: val as any })}
           options={qualityOptions}
-          disabled={settings.codexCli}
-          className={settings.codexCli
-            ? 'px-3 py-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-gray-100/50 dark:bg-white/[0.05] opacity-50 cursor-not-allowed text-xs transition-all duration-200 shadow-sm'
-            : selectClass}
+          className={selectClass}
         />
         <ButtonTooltip
-          visible={(settings.codexCli || isFalProvider) && qualityHintVisible}
-          text={isFalProvider ? <>fal.ai 不支持 <code className="rounded bg-white/10 px-1 py-0.5 font-mono">auto</code> 参数</> : 'Codex CLI 不支持质量参数'}
+          visible={qualityHintVisible}
+          text="质量参数会原样提交给托管网关，上游最终实际生效值以返回结果为准。"
         />
       </label>
       <label className="flex flex-col gap-0.5">
@@ -1018,7 +1032,7 @@ export default function InputBar() {
         />
         <ButtonTooltip
           visible={compressionHintVisible}
-          text={isFalProvider ? 'fal.ai 不支持压缩率参数' : '仅 JPEG 和 WebP 支持压缩率'}
+          text="仅 JPEG 和 WebP 支持压缩率"
         />
       </label>
       <label
@@ -1046,8 +1060,8 @@ export default function InputBar() {
             : selectClass}
         />
         <ButtonTooltip
-          visible={moderationDisabled && moderationHintVisible}
-          text={isFalProvider ? 'fal.ai 不支持审核参数' : 'Responses API 不支持审核参数'}
+          visible={moderationHintVisible}
+          text="审核参数会交由托管网关透传给上游。"
         />
       </label>
       <label className="relative flex flex-col gap-0.5">
@@ -1073,7 +1087,8 @@ export default function InputBar() {
           type="number"
           min={1}
           max={outputImageLimit}
-          className="px-3 py-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white/50 dark:bg-white/[0.03] focus:outline-none text-xs transition-all duration-200 shadow-sm"
+          disabled
+          className="px-3 py-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-gray-100/60 dark:bg-white/[0.05] focus:outline-none text-xs transition-all duration-200 shadow-sm opacity-60 cursor-not-allowed"
         />
         <ButtonTooltip visible={nLimitHintVisible} text={nLimitHintText} />
       </label>
@@ -1118,10 +1133,10 @@ export default function InputBar() {
 
       {showSizePicker && (
         <SizePickerModal
-          currentSize={isFalProvider && params.size === 'auto' ? DEFAULT_FAL_IMAGE_SIZE : params.size}
+          currentSize={params.size}
           onSelect={(size) => setParams({ size })}
           onClose={() => setShowSizePicker(false)}
-          allowAuto={!isFalProvider}
+          allowAuto
         />
       )}
 
@@ -1257,16 +1272,16 @@ export default function InputBar() {
                   onMouseEnter={() => setSubmitHover(true)}
                   onMouseLeave={() => setSubmitHover(false)}
                 >
-                  <ButtonTooltip visible={!settings.apiKey && submitHover} text="尚未完成 API 配置，请在右上角设置中进行" />
+                  <ButtonTooltip visible={!canGenerate && submitHover} text={submitBlockedReason} />
                   <button
-                    onClick={() => settings.apiKey ? submitTask() : setShowSettings(true)}
-                    disabled={settings.apiKey ? !canSubmit : false}
+                    onClick={handleSubmitAttempt}
+                    disabled={canGenerate ? !canSubmit : false}
                     className={`p-2.5 rounded-xl transition-all shadow-sm hover:shadow ${
-                      !settings.apiKey
+                      !canGenerate
                         ? 'bg-gray-300 dark:bg-white/[0.06] text-white cursor-pointer'
                         : 'bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-300 dark:disabled:bg-white/[0.04] disabled:opacity-50 disabled:cursor-not-allowed'
                     }`}
-                    title={settings.apiKey ? (maskDraft ? '遮罩编辑 (Ctrl+Enter)' : '生成 (Ctrl+Enter)') : '请先配置 API'}
+                    title={canGenerate ? (maskDraft ? '遮罩编辑 (Ctrl+Enter)' : '生成 (Ctrl+Enter)') : submitBlockedReason}
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
@@ -1311,12 +1326,12 @@ export default function InputBar() {
                   onMouseEnter={() => setSubmitHover(true)}
                   onMouseLeave={() => setSubmitHover(false)}
                 >
-                  <ButtonTooltip visible={!settings.apiKey && submitHover} text="尚未完成 API 配置，请在右上角设置中进行" />
+                  <ButtonTooltip visible={!canGenerate && submitHover} text={submitBlockedReason} />
                   <button
-                    onClick={() => settings.apiKey ? submitTask() : setShowSettings(true)}
-                    disabled={settings.apiKey ? !canSubmit : false}
+                    onClick={handleSubmitAttempt}
+                    disabled={canGenerate ? !canSubmit : false}
                     className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all shadow-sm ${
-                      !settings.apiKey
+                      !canGenerate
                         ? 'bg-gray-300 dark:bg-white/[0.06] text-white cursor-pointer'
                         : 'bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-300 dark:disabled:bg-white/[0.04] disabled:opacity-50 disabled:cursor-not-allowed'
                     }`}
