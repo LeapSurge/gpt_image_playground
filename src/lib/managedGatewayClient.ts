@@ -248,5 +248,6 @@ export async function callManagedGatewayApi(opts: CallApiOptions): Promise<CallA
     revisedPrompts: payload.revisedPrompts,
     providerInfo: payload.provider,
     remainingCredits: payload.remainingCredits,
+    anonymousTrial: payload.anonymousTrial,
   }
 }

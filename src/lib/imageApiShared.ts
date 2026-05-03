@@ -1,4 +1,4 @@
-import type { AppSettings, TaskParams } from '../types'
+import type { AppSettings, ManagedTrialState, TaskParams } from '../types'
 
 export const MIME_MAP: Record<string, string> = {
   png: 'image/png',
@@ -37,6 +37,8 @@ export interface CallApiResult {
   }
   /** 调用完成后的剩余额度 */
   remainingCredits?: number
+  /** 调用完成后的匿名试用额度 */
+  anonymousTrial?: ManagedTrialState
 }
 
 export function isHttpUrl(value: unknown): value is string {

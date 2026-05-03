@@ -69,6 +69,11 @@ describe('callManagedGatewayApi', () => {
         kind: 'openai',
         model: 'gpt-image-2',
       },
+      anonymousTrial: {
+        remainingCredits: 2,
+        limit: 3,
+        resetAt: '2026-05-10T00:00:00.000Z',
+      },
     })
   })
 

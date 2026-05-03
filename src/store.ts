@@ -833,6 +833,13 @@ async function executeTask(taskId: string) {
           },
         })
       }
+    } else if (result.anonymousTrial && useStore.getState().session.status === 'anonymous') {
+      useStore.getState().setSession({
+        status: 'anonymous',
+        customer: null,
+        expiresAt: null,
+        trial: result.anonymousTrial,
+      })
     } else if (useStore.getState().session.status === 'anonymous') {
       void refreshManagedSession().catch(() => undefined)
     }
