@@ -1,6 +1,4 @@
-import { useStore } from '../store'
-
-interface StarterExample {
+export interface StarterExample {
   id: string
   title: string
   subtitle: string
@@ -80,7 +78,7 @@ const STARTER_EXAMPLES: StarterExample[] = [
 
 interface FirstImageStarterProps {
   mode?: 'full' | 'compact'
-  onApply?: () => void
+  onApply?: (example: StarterExample) => void
 }
 
 function levelClass(level: StarterExample['level']) {
@@ -94,13 +92,8 @@ function levelClass(level: StarterExample['level']) {
 }
 
 export default function FirstImageStarter({ mode = 'full', onApply }: FirstImageStarterProps) {
-  const setPrompt = useStore((s) => s.setPrompt)
-  const showToast = useStore((s) => s.showToast)
-
   const applyExample = (example: StarterExample) => {
-    setPrompt(example.prompt)
-    showToast(example.toast, 'success')
-    onApply?.()
+    onApply?.(example)
   }
 
   if (mode === 'compact') {

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useEffect } from 'react'
 import { useStore, reuseConfig, editOutputs, removeTask } from '../store'
-import FirstImageStarter from './FirstImageStarter'
+import FirstImageStarter, { type StarterExample } from './FirstImageStarter'
 import TaskCard from './TaskCard'
 
 interface TaskGridProps {
@@ -18,6 +18,8 @@ export default function TaskGrid({ showStarter, onApplyStarter }: TaskGridProps)
   const selectedTaskIds = useStore((s) => s.selectedTaskIds)
   const setSelectedTaskIds = useStore((s) => s.setSelectedTaskIds)
   const clearSelection = useStore((s) => s.clearSelection)
+  const setPrompt = useStore((s) => s.setPrompt)
+  const showToast = useStore((s) => s.showToast)
   const rootRef = useRef<HTMLDivElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const [selectionBox, setSelectionBox] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null)
@@ -52,6 +54,12 @@ export default function TaskGrid({ showStarter, onApplyStarter }: TaskGridProps)
       message: '确定要删除这条记录吗？关联的图片资源也会被清理（如果没有其他任务引用）。',
       action: () => removeTask(task),
     })
+  }
+
+  const handleApplyStarter = (example: StarterExample) => {
+    setPrompt(example.prompt)
+    showToast(example.toast, 'success')
+    onApplyStarter()
   }
 
   const beginSelection = (target: HTMLElement, clientX: number, clientY: number, isCtrl: boolean) => {
@@ -177,7 +185,7 @@ export default function TaskGrid({ showStarter, onApplyStarter }: TaskGridProps)
         {searchQuery || filterFavorite ? (
           <p className="text-center text-sm">没有找到匹配的记录</p>
         ) : (
-          <FirstImageStarter />
+          <FirstImageStarter onApply={handleApplyStarter} />
         )}
       </div>
     )
@@ -191,7 +199,7 @@ export default function TaskGrid({ showStarter, onApplyStarter }: TaskGridProps)
     >
       {showStarter && (
         <div className="mb-4">
-          <FirstImageStarter mode="compact" onApply={onApplyStarter} />
+          <FirstImageStarter mode="compact" onApply={handleApplyStarter} />
         </div>
       )}
       <div ref={gridRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-10">
