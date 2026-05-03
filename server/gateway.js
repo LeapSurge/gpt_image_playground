@@ -150,6 +150,18 @@ export async function processGenerateRequest(request) {
 
         try {
           const trialState = await consumeAnonymousTrial(request)
+          await store.recordAnonymousUsage({
+            usageLog: {
+              id: randomId('usage'),
+              providerKey: provider.key,
+              providerLabel: provider.label,
+              providerModel: provider.model,
+              imageCount: result.images.length,
+              status: 'success',
+              promptPreview: buildPromptPreview(payload.prompt),
+              trialRemaining: trialState.remainingCredits,
+            },
+          })
           devLog('generate', 'request-success', {
             requestId,
             authenticated: false,
@@ -186,10 +198,25 @@ export async function processGenerateRequest(request) {
             },
           })
         }
+        }
       }
-    }
 
-    throw new Error(attemptErrors.length ? `所有上游都失败了：${attemptErrors.join(' | ')}` : '没有可用的上游 Provider')
+      if (!customer) {
+        await store.recordAnonymousUsage({
+          usageLog: {
+            id: randomId('usage'),
+            providerKey: 'all-providers',
+            providerLabel: 'All providers',
+            providerModel: '-',
+            imageCount: 0,
+            status: 'failed',
+            promptPreview: buildPromptPreview(payload.prompt),
+            errorMessage: attemptErrors.join(' | '),
+            trialRemaining: anonymousTrial?.remainingCredits ?? null,
+          },
+        })
+      }
+      throw new Error(attemptErrors.length ? `所有上游都失败了：${attemptErrors.join(' | ')}` : '没有可用的上游 Provider')
   } catch (error) {
     devLog('generate', 'request-error', {
       requestId,

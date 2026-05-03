@@ -16,6 +16,7 @@ export interface AdminUsageRecord {
   customerId: string
   customerEmail: string
   customerName: string
+  audience: 'customer' | 'anonymous'
   creditsDelta: number
   providerKey: string
   providerLabel: string
@@ -24,6 +25,7 @@ export interface AdminUsageRecord {
   status: 'success' | 'failed'
   promptPreview: string
   errorMessage: string | null
+  trialRemaining: number | null
   createdAt: string
 }
 

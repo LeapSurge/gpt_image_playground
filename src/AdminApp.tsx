@@ -504,7 +504,7 @@ export default function AdminApp() {
             <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] lg:col-span-2">
               <div className="mb-4">
                 <h2 className="text-lg font-semibold text-gray-950">最近使用记录</h2>
-                <p className="text-sm text-gray-500">仅展示最近 20 条生成记录。</p>
+                <p className="text-sm text-gray-500">仅展示最近 20 条生成记录，包含已登录客户和匿名试用。</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-left text-sm">
@@ -523,10 +523,18 @@ export default function AdminApp() {
                       <tr key={record.id}>
                         <td className="py-3 pr-4 text-gray-600">{formatDateTime(record.createdAt)}</td>
                         <td className="py-3 pr-4">
-                          <div className="font-medium text-gray-900">{record.customerName}</div>
-                          <div className="text-xs text-gray-500">{record.customerEmail}</div>
+                          <div className="font-medium text-gray-900">
+                            {record.audience === 'anonymous' ? '匿名试用' : record.customerName}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {record.audience === 'anonymous'
+                              ? `剩余试用 ${record.trialRemaining ?? '-'}`
+                              : record.customerEmail}
+                          </div>
                         </td>
-                        <td className="py-3 pr-4 text-gray-900">{record.creditsDelta}</td>
+                        <td className="py-3 pr-4 text-gray-900">
+                          {record.audience === 'anonymous' ? '-' : record.creditsDelta}
+                        </td>
                         <td className="py-3 pr-4 text-gray-600">
                           <div>{record.providerLabel}</div>
                           <div className="text-xs text-gray-500">{record.providerModel}</div>

@@ -7,6 +7,7 @@ function createEmptyState() {
     customers: [],
     sessions: [],
     usageLogs: [],
+    anonymousUsageLogs: [],
     quotaGrants: [],
     anonymousTrials: [],
   }
@@ -114,17 +115,15 @@ export function createFileStore(filePath) {
     },
 
     async listUsageLogs(limit = 20) {
-      return readOnly((state) => state.usageLogs
-        .slice()
-        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
-        .slice(0, limit)
-        .map((log) => {
+      return readOnly((state) => {
+        const customerLogs = state.usageLogs.map((log) => {
           const customer = state.customers.find((item) => item.id === log.customerId)
           return {
             id: log.id,
             customerId: log.customerId,
             customerEmail: customer?.email ?? '',
             customerName: customer?.name ?? '',
+            audience: 'customer',
             creditsDelta: log.creditsDelta,
             providerKey: log.providerKey,
             providerLabel: log.providerLabel,
@@ -133,9 +132,32 @@ export function createFileStore(filePath) {
             status: log.status,
             promptPreview: log.promptPreview,
             errorMessage: log.errorMessage,
+            trialRemaining: null,
             createdAt: log.createdAt,
           }
+        })
+        const anonymousLogs = (state.anonymousUsageLogs ?? []).map((log) => ({
+          id: log.id,
+          customerId: '',
+          customerEmail: '',
+          customerName: '',
+          audience: 'anonymous',
+          creditsDelta: 0,
+          providerKey: log.providerKey,
+          providerLabel: log.providerLabel,
+          providerModel: log.providerModel,
+          imageCount: log.imageCount,
+          status: log.status,
+          promptPreview: log.promptPreview,
+          errorMessage: log.errorMessage,
+          trialRemaining: log.trialRemaining ?? null,
+          createdAt: log.createdAt,
         }))
+
+        return [...customerLogs, ...anonymousLogs]
+          .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+          .slice(0, limit)
+      })
     },
 
     async createSession({ customerId, tokenHash, expiresAt }) {
@@ -294,6 +316,24 @@ export function createFileStore(filePath) {
           status: 'failed',
           promptPreview: usageLog.promptPreview,
           errorMessage: usageLog.errorMessage ?? null,
+          createdAt: new Date().toISOString(),
+        })
+      })
+    },
+
+    async recordAnonymousUsage({ usageLog }) {
+      return queueWrite((state) => {
+        state.anonymousUsageLogs = state.anonymousUsageLogs ?? []
+        state.anonymousUsageLogs.push({
+          id: usageLog.id,
+          providerKey: usageLog.providerKey,
+          providerLabel: usageLog.providerLabel,
+          providerModel: usageLog.providerModel,
+          imageCount: usageLog.imageCount,
+          status: usageLog.status,
+          promptPreview: usageLog.promptPreview,
+          errorMessage: usageLog.errorMessage ?? null,
+          trialRemaining: usageLog.trialRemaining ?? null,
           createdAt: new Date().toISOString(),
         })
       })

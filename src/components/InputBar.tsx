@@ -175,7 +175,7 @@ export default function InputBar() {
   const moderationDisabled = false
   const compressionDisabled = params.output_format === 'png'
   const outputImageLimit = MANAGED_OUTPUT_IMAGE_LIMIT
-  const nLimitHintText = `托管网关当前仅支持 ${outputImageLimit} 张`
+  const nLimitHintText = `当前版本一次最多生成 ${outputImageLimit} 张`
   const displaySize = normalizeImageSize(params.size) || DEFAULT_PARAMS.size
   const qualityOptions = [
     { label: 'auto', value: 'auto' },
@@ -999,7 +999,7 @@ export default function InputBar() {
         />
         <ButtonTooltip
           visible={qualityHintVisible}
-          text="质量参数会原样提交给托管网关，上游最终实际生效值以返回结果为准。"
+          text="质量会按你的选择提交；最终以生成结果实际生效的参数为准。"
         />
       </label>
       <label className="flex flex-col gap-0.5">
@@ -1071,7 +1071,7 @@ export default function InputBar() {
         />
         <ButtonTooltip
           visible={moderationHintVisible}
-          text="审核参数会交由托管网关透传给上游。"
+          text="审核级别会随请求一起提交。"
         />
       </label>
       <label className="relative flex flex-col gap-0.5">

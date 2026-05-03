@@ -56,6 +56,20 @@ export function createNeonStore(databaseUrl, neonFactory) {
             )
           `,
           sql`
+            CREATE TABLE IF NOT EXISTS managed_anonymous_usage_logs (
+              id TEXT PRIMARY KEY,
+              provider_key TEXT NOT NULL,
+              provider_label TEXT NOT NULL,
+              provider_model TEXT NOT NULL,
+              image_count INTEGER NOT NULL DEFAULT 1,
+              status TEXT NOT NULL,
+              prompt_preview TEXT NOT NULL,
+              error_message TEXT,
+              trial_remaining INTEGER,
+              created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+          `,
+          sql`
             CREATE TABLE IF NOT EXISTS managed_quota_grants (
               id TEXT PRIMARY KEY,
               customer_id TEXT NOT NULL REFERENCES managed_customers(id) ON DELETE CASCADE,
@@ -130,23 +144,48 @@ export function createNeonStore(databaseUrl, neonFactory) {
     async listUsageLogs(limit = 20) {
       await ensureSchema()
       const rows = await sql.query(`
-        SELECT
-          l.id,
-          l.customer_id,
-          c.email AS customer_email,
-          c.name AS customer_name,
-          l.credits_delta,
-          l.provider_key,
-          l.provider_label,
-          l.provider_model,
-          l.image_count,
-          l.status,
-          l.prompt_preview,
-          l.error_message,
-          l.created_at
-        FROM managed_usage_logs l
-        JOIN managed_customers c ON c.id = l.customer_id
-        ORDER BY l.created_at DESC
+        SELECT *
+        FROM (
+          SELECT
+            l.id,
+            l.customer_id,
+            c.email AS customer_email,
+            c.name AS customer_name,
+            'customer' AS audience,
+            l.credits_delta,
+            l.provider_key,
+            l.provider_label,
+            l.provider_model,
+            l.image_count,
+            l.status,
+            l.prompt_preview,
+            l.error_message,
+            NULL::INTEGER AS trial_remaining,
+            l.created_at
+          FROM managed_usage_logs l
+          JOIN managed_customers c ON c.id = l.customer_id
+
+          UNION ALL
+
+          SELECT
+            l.id,
+            '' AS customer_id,
+            '' AS customer_email,
+            '' AS customer_name,
+            'anonymous' AS audience,
+            0 AS credits_delta,
+            l.provider_key,
+            l.provider_label,
+            l.provider_model,
+            l.image_count,
+            l.status,
+            l.prompt_preview,
+            l.error_message,
+            l.trial_remaining,
+            l.created_at
+          FROM managed_anonymous_usage_logs l
+        ) logs
+        ORDER BY created_at DESC
         LIMIT $1
       `, [limit])
 
@@ -155,6 +194,7 @@ export function createNeonStore(databaseUrl, neonFactory) {
         customerId: row.customer_id,
         customerEmail: row.customer_email,
         customerName: row.customer_name,
+        audience: row.audience === 'anonymous' ? 'anonymous' : 'customer',
         creditsDelta: Number(row.credits_delta),
         providerKey: row.provider_key,
         providerLabel: row.provider_label,
@@ -163,6 +203,7 @@ export function createNeonStore(databaseUrl, neonFactory) {
         status: row.status,
         promptPreview: row.prompt_preview,
         errorMessage: row.error_message,
+        trialRemaining: row.trial_remaining == null ? null : Number(row.trial_remaining),
         createdAt: new Date(row.created_at).toISOString(),
       }))
     },
@@ -369,6 +410,34 @@ export function createNeonStore(databaseUrl, neonFactory) {
           'failed',
           ${usageLog.promptPreview},
           ${usageLog.errorMessage ?? null}
+        )
+      `
+    },
+
+    async recordAnonymousUsage({ usageLog }) {
+      await ensureSchema()
+      await sql`
+        INSERT INTO managed_anonymous_usage_logs (
+          id,
+          provider_key,
+          provider_label,
+          provider_model,
+          image_count,
+          status,
+          prompt_preview,
+          error_message,
+          trial_remaining
+        )
+        VALUES (
+          ${usageLog.id},
+          ${usageLog.providerKey},
+          ${usageLog.providerLabel},
+          ${usageLog.providerModel},
+          ${usageLog.imageCount},
+          ${usageLog.status},
+          ${usageLog.promptPreview},
+          ${usageLog.errorMessage ?? null},
+          ${usageLog.trialRemaining ?? null}
         )
       `
     },

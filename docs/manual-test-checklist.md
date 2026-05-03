@@ -66,6 +66,7 @@ Expected:
 - Response returns `200`
 - A new task/result appears in the UI
 - Trial balance decreases by exactly `1`
+- `/admin` 的最近使用记录中可看到一条匿名试用成功记录
 
 ### 1.3 Trial balance persists
 1. Refresh the page.
@@ -212,7 +213,7 @@ Expected:
 Expected:
 - `GET /api/admin/usage` returns `200`
 - Records include:
-  - customer identity
+  - customer identity or anonymous trial marker
   - credit delta
   - provider info
   - success or failure status
