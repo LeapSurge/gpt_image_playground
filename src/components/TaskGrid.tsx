@@ -5,9 +5,10 @@ import TaskCard from './TaskCard'
 
 interface TaskGridProps {
   showStarter: boolean
+  onApplyStarter: () => void
 }
 
-export default function TaskGrid({ showStarter }: TaskGridProps) {
+export default function TaskGrid({ showStarter, onApplyStarter }: TaskGridProps) {
   const tasks = useStore((s) => s.tasks)
   const searchQuery = useStore((s) => s.searchQuery)
   const filterStatus = useStore((s) => s.filterStatus)
@@ -190,7 +191,7 @@ export default function TaskGrid({ showStarter }: TaskGridProps) {
     >
       {showStarter && (
         <div className="mb-4">
-          <FirstImageStarter />
+          <FirstImageStarter mode="compact" onApply={onApplyStarter} />
         </div>
       )}
       <div ref={gridRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-10">

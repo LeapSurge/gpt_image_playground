@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { initStore } from './store'
 import { useStore } from './store'
 import { useDockerApiUrlMigrationNotice } from './hooks/useDockerApiUrlMigrationNotice'
@@ -18,12 +18,20 @@ import AuthModal from './components/AuthModal'
 export default function App() {
   const tasks = useStore((s) => s.tasks)
   const [showStarter, setShowStarter] = useState(false)
+  const previousTaskCountRef = useRef(tasks.length)
 
   useDockerApiUrlMigrationNotice()
 
   useEffect(() => {
     initStore()
   }, [])
+
+  useEffect(() => {
+    if (tasks.length > previousTaskCountRef.current) {
+      setShowStarter(false)
+    }
+    previousTaskCountRef.current = tasks.length
+  }, [tasks.length])
 
   useEffect(() => {
     const preventPageImageDrag = (e: DragEvent) => {
@@ -42,7 +50,7 @@ export default function App() {
       <main data-home-main data-drag-select-surface className="pb-48">
         <div className="safe-area-x max-w-7xl mx-auto">
           {tasks.length > 0 && <SearchBar showStarter={showStarter} onToggleStarter={() => setShowStarter((value) => !value)} />}
-          <TaskGrid showStarter={showStarter} />
+          <TaskGrid showStarter={showStarter} onApplyStarter={() => setShowStarter(false)} />
         </div>
       </main>
       <InputBar />
