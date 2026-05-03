@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useState, useMemo, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { useStore, submitTask, addImageFromFile, updateTaskInStore, removeMultipleTasks } from '../store'
+import { useStore, submitTask, addImageFromFile, updateTaskInStore, removeMultipleTasks, refreshManagedSession } from '../store'
 import { DEFAULT_PARAMS } from '../types'
 import { getChangedParams } from '../lib/paramCompatibility'
 import { MANAGED_OUTPUT_IMAGE_LIMIT, normalizeManagedGatewayParams } from '../lib/managedGatewayCapabilities'
@@ -172,10 +172,16 @@ export default function InputBar() {
       : !isLoggedIn
         ? '请输入兑换码后继续生成'
         : !isAccountActive
-          ? '当前兑换已停用，请联系购买渠道处理'
+          ? '会话状态同步中，点击后会自动刷新'
           : isOutOfCredits
             ? '额度已用完，请购买更多额度或联系客服'
             : ''
+
+  useEffect(() => {
+    if (session.status === 'authenticated' && session.customer?.status !== 'active') {
+      void refreshManagedSession().catch(() => undefined)
+    }
+  }, [session.customer?.id, session.customer?.status, session.status])
   const moderationDisabled = false
   const compressionDisabled = params.output_format === 'png'
   const outputImageLimit = MANAGED_OUTPUT_IMAGE_LIMIT
@@ -196,24 +202,8 @@ export default function InputBar() {
     : inputImages
 
   const handleSubmitAttempt = useCallback(() => {
-    if (session.status === 'anonymous' && !hasAnonymousTrial) {
-      setShowAuthDialog(true)
-      return
-    }
-    if (!isLoggedIn && session.status !== 'anonymous') {
-      setShowAuthDialog(true)
-      return
-    }
-    if (!isAccountActive) {
-      showToast('当前兑换已停用，请联系购买渠道处理', 'error')
-      return
-    }
-    if (isOutOfCredits) {
-      showToast('额度已用完，请购买更多额度或联系客服', 'error')
-      return
-    }
     void submitTask()
-  }, [hasAnonymousTrial, isAccountActive, isLoggedIn, isOutOfCredits, session.status, setShowAuthDialog, showToast])
+  }, [])
 
   useEffect(() => {
     setOutputCompressionInput(

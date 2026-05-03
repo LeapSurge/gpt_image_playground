@@ -150,6 +150,28 @@ interface AppState {
   setConfirmDialog: (d: AppState['confirmDialog']) => void
 }
 
+type PersistedAppState = Pick<AppState, 'settings' | 'params' | 'prompt' | 'inputImages' | 'dismissedCodexCliPrompts'>
+
+export function mergePersistedAppState(
+  persistedState: unknown,
+  currentState: AppState,
+): AppState {
+  const record = persistedState && typeof persistedState === 'object'
+    ? persistedState as Partial<PersistedAppState>
+    : {}
+
+  return {
+    ...currentState,
+    settings: record.settings ? normalizeSettings(record.settings) : currentState.settings,
+    params: record.params ? { ...currentState.params, ...record.params } : currentState.params,
+    prompt: typeof record.prompt === 'string' ? record.prompt : currentState.prompt,
+    inputImages: Array.isArray(record.inputImages) ? record.inputImages : currentState.inputImages,
+    dismissedCodexCliPrompts: Array.isArray(record.dismissedCodexCliPrompts)
+      ? record.dismissedCodexCliPrompts
+      : currentState.dismissedCodexCliPrompts,
+  }
+}
+
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -316,6 +338,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'gpt-image-playground',
+      merge: (persistedState, currentState) => mergePersistedAppState(persistedState, currentState),
       partialize: (state) => ({
         settings: state.settings,
         params: state.params,
@@ -418,8 +441,24 @@ export async function refreshManagedSession() {
   }
 }
 
-function validateManagedSubmissionSession() {
-  const { session, showToast, setShowAuthDialog } = useStore.getState()
+async function validateManagedSubmissionSession() {
+  const { showToast, setShowAuthDialog } = useStore.getState()
+  let { session } = useStore.getState()
+
+  if (session.status === 'authenticated' && (!session.customer || session.customer.status !== 'active')) {
+    useStore.getState().setSession({
+      status: 'loading',
+      customer: null,
+      expiresAt: null,
+      trial: null,
+    })
+    try {
+      session = await refreshManagedSession()
+    } catch {
+      session = useStore.getState().session
+    }
+  }
+
   const customer = session.customer
   const trial = session.trial
 
@@ -439,7 +478,7 @@ function validateManagedSubmissionSession() {
   }
 
   if (customer.status !== 'active') {
-    showToast('当前兑换已停用，请联系购买渠道处理', 'error')
+    showToast('当前会话状态已变化，正在刷新，请稍后重试', 'error')
     return false
   }
 
@@ -668,7 +707,7 @@ export async function submitTask(options: { allowFullMask?: boolean } = {}) {
     }
   }
 
-  if (!validateManagedSubmissionSession()) {
+  if (!await validateManagedSubmissionSession()) {
     return
   }
 
@@ -843,7 +882,7 @@ export function updateTaskInStore(taskId: string, patch: Partial<TaskRecord>) {
 
 /** 重试失败的任务：创建新任务并执行 */
 export async function retryTask(task: TaskRecord) {
-  if (!validateManagedSubmissionSession()) return
+  if (!await validateManagedSubmissionSession()) return
   const normalizedParams = normalizeManagedGatewayParams(task.params)
   const taskId = genId()
   const newTask: TaskRecord = {
@@ -1184,5 +1223,13 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     reader.onload = () => resolve(reader.result as string)
     reader.onerror = reject
     reader.readAsDataURL(blob)
+  })
+}
+
+if (import.meta.hot) {
+  // Zustand store is a singleton. When this module hot-reloads in dev,
+  // forcing a full page reload avoids split in-memory store instances.
+  import.meta.hot.accept(() => {
+    import.meta.hot?.invalidate()
   })
 }

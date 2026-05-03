@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_PARAMS } from './types'
 import { DEFAULT_SETTINGS } from './lib/apiProfiles'
 import type { TaskRecord } from './types'
-import { editOutputs, markInterruptedOpenAIRunningTasks, retryTask, submitTask, useStore } from './store'
+import { editOutputs, markInterruptedOpenAIRunningTasks, mergePersistedAppState, retryTask, submitTask, useStore } from './store'
 
 const imageA = { id: 'image-a', dataUrl: 'data:image/png;base64,a' }
 
@@ -123,5 +123,30 @@ describe('interrupted OpenAI running tasks', () => {
     })
     expect(result.tasks.find((item) => item.id === 'fal-running')).toEqual(falRunning)
     expect(result.tasks.find((item) => item.id === 'done-task')).toEqual(doneTask)
+  })
+})
+
+describe('persisted store merge', () => {
+  it('ignores stale session data from older local storage payloads', () => {
+    const currentState = useStore.getState()
+
+    const merged = mergePersistedAppState({
+      prompt: 'persisted prompt',
+      session: {
+        status: 'authenticated',
+        customer: {
+          id: 'disabled-customer',
+          email: 'disabled@example.com',
+          name: 'Disabled',
+          remainingCredits: 99,
+          status: 'disabled',
+        },
+        expiresAt: '2026-06-01T00:00:00.000Z',
+        trial: null,
+      },
+    }, currentState)
+
+    expect(merged.prompt).toBe('persisted prompt')
+    expect(merged.session).toEqual(currentState.session)
   })
 })
