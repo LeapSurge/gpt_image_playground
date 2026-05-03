@@ -2,3 +2,13 @@ node_modules/
 dist/
 dev-proxy.config.json
 .local-managed-gateway-store.json
+
+.vercel
+.vercel-global/
+.edge-devtools/
+_edge-debug-tests/
+.dev-server*.log
+.vite-*.log
+_tmp_*.png
+.env.local
+.env.*.local

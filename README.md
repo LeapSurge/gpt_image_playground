@@ -105,6 +105,7 @@
 **至少需要配置这些环境变量：**
 
 - `MANAGED_GATEWAY_SESSION_SECRET`
+- `ADMIN_SECRET`
 - `MANAGED_GATEWAY_PRIMARY_BASE_URL`
 - `MANAGED_GATEWAY_PRIMARY_API_KEY`
 - `MANAGED_GATEWAY_PRIMARY_MODEL`，例如 `gpt-image-2`
@@ -126,16 +127,29 @@
 
 ```bash
 npm run gateway:admin -- create-customer --email customer@example.com --name "Customer" --credits 100
+
+管理员后台入口为 `/admin`。进入后使用 `ADMIN_SECRET` 登录，可查看客户、创建客户、加额度和查看最近使用记录。
 ```
 
 **配置自动更新**：
 
 本项目已在 `vercel.json` 中关闭了默认的自动部署。若需在同步 GitHub 上游代码后自动更新 Vercel 部署：
 
-1. 在 Vercel 项目设置 **Settings -> Git** 的 **Deploy Hooks** 中创建一个名为 `Release` 的 Hook（Branch 填 `main`）并复制生成的 URL。
-2. 在你 Fork 的 GitHub 仓库设置 **Settings -> Secrets and variables -> Actions** 中，新建 Secret `VERCEL_DEPLOY_HOOK`，填入刚才的 URL。
+1. 在 GitHub 仓库配置 Actions secrets：
+   - `VERCEL_TOKEN`
+   - `VERCEL_ORG_ID`
+   - `VERCEL_PROJECT_ID`
+2. 推送前先在本地执行：
 
-此后，每次在 GitHub 点击 **Sync fork** 同步上游，都会自动触发 Vercel 构建部署最新版。
+```bash
+npm run ci:local
+```
+
+3. `.github/workflows/ci.yml` 会在 `pull_request` 和 `main` 分支推送时执行：
+   - `npm ci`
+   - `npm run build`
+   - `npm test`
+4. `.github/workflows/vercel-production.yml` 会在 `main` 分支推送或手动触发时执行生产部署，并在部署前再次跑同样的校验，再使用 `vercel build` + `vercel deploy --prebuilt --prod` 发布。
 
 </details>
 

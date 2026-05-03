@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.vercel
+.vercel-global
+.edge-devtools
+_edge-debug-tests
+.dev-server*.log
+.vite-*.log
+_tmp_*.png
+dev-proxy.config.json
+.local-managed-gateway-store.json

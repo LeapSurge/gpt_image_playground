@@ -3,6 +3,13 @@
   "git": {
     "deploymentEnabled": false
   },
+  "redirects": [
+    {
+      "source": "/admin",
+      "destination": "/admin/",
+      "permanent": false
+    }
+  ],
   "functions": {
     "api/generate.js": {
       "maxDuration": 300
