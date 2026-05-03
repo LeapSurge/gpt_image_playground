@@ -1,4 +1,18 @@
+import { Client } from '@neondatabase/serverless'
 import { randomId } from '../ids.js'
+
+export function serializeTimestamp(value) {
+  if (value == null || value === '') {
+    return null
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return String(value)
+  }
+
+  return parsed.toISOString()
+}
 
 function toPublicCustomer(record) {
   return {
@@ -21,13 +35,13 @@ function toPublicRedeemCode(record) {
     redeemedByCustomerId: record.redeemed_by_customer_id ?? null,
     redeemedByCustomerEmail: record.redeemed_by_customer_email ?? null,
     redeemedByCustomerName: record.redeemed_by_customer_name ?? null,
-    redeemedAt: record.redeemed_at ? new Date(record.redeemed_at).toISOString() : null,
+    redeemedAt: serializeTimestamp(record.redeemed_at),
     batchId: record.batch_id,
-    createdAt: new Date(record.created_at).toISOString(),
+    createdAt: serializeTimestamp(record.created_at),
   }
 }
 
-export function createNeonStore(databaseUrl, neonFactory) {
+export function createNeonStore(databaseUrl, neonFactory, ClientCtor = Client) {
   const sql = neonFactory(databaseUrl)
   let schemaPromise = null
 
@@ -188,7 +202,7 @@ export function createNeonStore(databaseUrl, neonFactory) {
 
     async createRedeemCodeBatch({ batchId, operator, codes }) {
       await ensureSchema()
-      return sql.transaction(codes.map((code) => sql`
+      const rows = await sql.transaction(codes.map((code) => sql`
         INSERT INTO managed_redeem_codes (
           id,
           batch_id,
@@ -224,7 +238,8 @@ export function createNeonStore(databaseUrl, neonFactory) {
           NULL::TEXT AS redeemed_by_customer_name,
           redeemed_at,
           created_at
-      `)).then((rows) => rows.map(toPublicRedeemCode))
+      `))
+      return rows.flat().map(toPublicRedeemCode)
     },
 
     async listRedeemCodes(limit = 50) {
@@ -253,8 +268,13 @@ export function createNeonStore(databaseUrl, neonFactory) {
 
     async consumeRedeemCode({ codeHash, customerId, createCustomer, operator }) {
       await ensureSchema()
-      return sql.transaction(async (tx) => {
-        const redeemRows = await tx`
+      const client = new ClientCtor(databaseUrl)
+      await client.connect()
+
+      try {
+        await client.query('BEGIN')
+
+        const redeemResult = await client.query(`
           SELECT
             id,
             batch_id,
@@ -267,14 +287,14 @@ export function createNeonStore(databaseUrl, neonFactory) {
             redeemed_at,
             created_at
           FROM managed_redeem_codes
-          WHERE code_hash = ${codeHash}
+          WHERE code_hash = $1
           LIMIT 1
-        `
-        if (!redeemRows[0]) {
+          FOR UPDATE
+        `, [codeHash])
+        const redeemCode = redeemResult.rows[0]
+        if (!redeemCode) {
           throw new Error('兑换码不正确')
         }
-
-        const redeemCode = redeemRows[0]
         if (redeemCode.status === 'disabled') {
           throw new Error('兑换码已停用')
         }
@@ -287,72 +307,88 @@ export function createNeonStore(databaseUrl, neonFactory) {
           if (!createCustomer) {
             throw new Error('缺少兑换目标账户')
           }
-          const createdRows = await tx`
+          const createdCustomerResult = await client.query(`
             INSERT INTO managed_customers (id, email, name, access_code_hash, remaining_credits, status)
-            VALUES (${randomId('customer')}, ${createCustomer.email}, ${createCustomer.name}, ${createCustomer.accessCodeHash}, 0, 'active')
+            VALUES ($1, $2, $3, $4, 0, 'active')
             RETURNING id
-          `
-          resolvedCustomerId = createdRows[0].id
+          `, [
+            randomId('customer'),
+            createCustomer.email,
+            createCustomer.name,
+            createCustomer.accessCodeHash,
+          ])
+          resolvedCustomerId = createdCustomerResult.rows[0]?.id
         }
 
-        const updatedRows = await tx.query(`
+        const updatedCustomerResult = await client.query(`
           UPDATE managed_customers
           SET remaining_credits = remaining_credits + $2, updated_at = NOW()
           WHERE id = $1
             AND status = 'active'
           RETURNING id, email, name, remaining_credits, status
         `, [resolvedCustomerId, Number(redeemCode.credits)])
-
-        if (!updatedRows[0]) {
+        const updatedCustomer = updatedCustomerResult.rows[0]
+        if (!updatedCustomer) {
           throw new Error('当前账户不可用，请重新兑换')
         }
 
-        const redeemedRows = await tx`
+        const redeemedCodeResult = await client.query(`
           UPDATE managed_redeem_codes
           SET
             status = 'redeemed',
-            redeemed_by_customer_id = ${resolvedCustomerId},
+            redeemed_by_customer_id = $2,
             redeemed_at = NOW()
-          WHERE id = ${redeemCode.id}
+          WHERE id = $1
             AND status = 'unused'
-        RETURNING
-          id,
-          batch_id,
-          code_preview,
-          status,
-          credits,
-          source,
-          product_name,
-          redeemed_by_customer_id,
-          NULL::TEXT AS redeemed_by_customer_email,
-          NULL::TEXT AS redeemed_by_customer_name,
-          redeemed_at,
-          created_at
-        `
-        if (!redeemedRows[0]) {
+          RETURNING
+            id,
+            batch_id,
+            code_preview,
+            status,
+            credits,
+            source,
+            product_name,
+            redeemed_by_customer_id,
+            redeemed_at,
+            created_at
+        `, [redeemCode.id, resolvedCustomerId])
+        const redeemedCode = redeemedCodeResult.rows[0]
+        if (!redeemedCode) {
           throw new Error('兑换码已使用')
         }
 
-        redeemedRows[0].redeemed_by_customer_email = updatedRows[0].email
-        redeemedRows[0].redeemed_by_customer_name = updatedRows[0].name
-
-        await tx`
+        await client.query(`
           INSERT INTO managed_quota_grants (id, customer_id, credits, reason, operator)
-          VALUES (
-            ${randomId('grant')},
-            ${resolvedCustomerId},
-            ${Number(redeemedRows[0].credits)},
-            ${`redeem:${redeemedRows[0].product_name}`},
-            ${operator}
-          )
-        `
+          VALUES ($1, $2, $3, $4, $5)
+        `, [
+          randomId('grant'),
+          resolvedCustomerId,
+          Number(redeemedCode.credits),
+          `redeem:${redeemedCode.product_name}`,
+          operator,
+        ])
+
+        await client.query('COMMIT')
 
         return {
-          customer: toPublicCustomer(updatedRows[0]),
-          redeemCode: toPublicRedeemCode(redeemedRows[0]),
+          customer: toPublicCustomer(updatedCustomer),
+          redeemCode: toPublicRedeemCode({
+            ...redeemedCode,
+            redeemed_by_customer_email: updatedCustomer.email,
+            redeemed_by_customer_name: updatedCustomer.name,
+          }),
           createdCustomer: !customerId,
         }
-      })
+      } catch (error) {
+        try {
+          await client.query('ROLLBACK')
+        } catch {
+          // ignore rollback failures
+        }
+        throw error
+      } finally {
+        await client.end()
+      }
     },
 
     async deleteCustomer(customerId) {
@@ -431,7 +467,7 @@ export function createNeonStore(databaseUrl, neonFactory) {
         promptPreview: row.prompt_preview,
         errorMessage: row.error_message,
         trialRemaining: row.trial_remaining == null ? null : Number(row.trial_remaining),
-        createdAt: new Date(row.created_at).toISOString(),
+        createdAt: serializeTimestamp(row.created_at),
       }))
     },
 
@@ -516,7 +552,7 @@ export function createNeonStore(databaseUrl, neonFactory) {
       return {
         remainingCredits: Number(rows[0].remaining_credits),
         limit,
-        resetAt: rows[0].reset_at ? new Date(rows[0].reset_at).toISOString() : null,
+        resetAt: serializeTimestamp(rows[0].reset_at),
       }
     },
 
@@ -551,7 +587,7 @@ export function createNeonStore(databaseUrl, neonFactory) {
       return {
         remainingCredits: Math.max(0, limit - Number(rows[0].used_count)),
         limit,
-        resetAt: new Date(rows[0].reset_at).toISOString(),
+        resetAt: serializeTimestamp(rows[0].reset_at),
       }
     },
 

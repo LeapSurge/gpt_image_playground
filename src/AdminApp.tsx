@@ -12,6 +12,7 @@ import {
   logoutAdminSession,
 } from './lib/adminClient'
 import type { AdminCustomer, AdminRedeemCode, AdminUsageRecord } from './lib/adminClient'
+import { copyTextToClipboard, getClipboardFailureMessage } from './lib/clipboard'
 
 type AdminViewState = 'loading' | 'unauthenticated' | 'authenticated'
 
@@ -20,11 +21,18 @@ interface NoticeState {
   message: string
 }
 
-function formatDateTime(value: string) {
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return '-'
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return String(value)
+  }
+
   try {
-    return new Date(value).toLocaleString('zh-CN', { hour12: false })
+    return parsed.toLocaleString('zh-CN', { hour12: false })
   } catch {
-    return value
+    return String(value)
   }
 }
 
@@ -294,7 +302,7 @@ export default function AdminApp() {
   const handleCopyAccessCode = async () => {
     if (!lastCreatedAccessCode) return
     try {
-      await navigator.clipboard.writeText(lastCreatedAccessCode)
+      await copyTextToClipboard(lastCreatedAccessCode)
       setNotice({
         type: 'success',
         message: '访问码已复制到剪贴板',
@@ -302,7 +310,7 @@ export default function AdminApp() {
     } catch (error) {
       setNotice({
         type: 'error',
-        message: error instanceof Error ? error.message : String(error),
+        message: getClipboardFailureMessage('复制访问码失败', error),
       })
     }
   }
@@ -310,7 +318,7 @@ export default function AdminApp() {
   const handleCopyRedeemCodes = async () => {
     if (!lastCreatedCodes.length) return
     try {
-      await navigator.clipboard.writeText(lastCreatedCodes.map((item) => item.code).join('\n'))
+      await copyTextToClipboard(lastCreatedCodes.map((item) => item.code).join('\n'))
       setNotice({
         type: 'success',
         message: '兑换码已复制到剪贴板',
@@ -318,7 +326,22 @@ export default function AdminApp() {
     } catch (error) {
       setNotice({
         type: 'error',
-        message: error instanceof Error ? error.message : String(error),
+        message: getClipboardFailureMessage('复制兑换码失败', error),
+      })
+    }
+  }
+
+  const handleCopyRedeemCode = async (code: string) => {
+    try {
+      await copyTextToClipboard(code)
+      setNotice({
+        type: 'success',
+        message: '兑换码已复制到剪贴板',
+      })
+    } catch (error) {
+      setNotice({
+        type: 'error',
+        message: getClipboardFailureMessage('复制兑换码失败', error),
       })
     }
   }
@@ -539,7 +562,16 @@ export default function AdminApp() {
                     </div>
                     <div className="mt-3 max-h-32 space-y-1 overflow-y-auto rounded-xl bg-white/70 px-3 py-2 font-mono text-[11px] text-emerald-900">
                       {lastCreatedCodes.map((code) => (
-                        <div key={code.id}>{code.code}</div>
+                        <div key={code.id} className="flex items-center justify-between gap-2">
+                          <span className="min-w-0 flex-1 break-all">{code.code}</span>
+                          <button
+                            type="button"
+                            onClick={() => void handleCopyRedeemCode(code.code)}
+                            className="shrink-0 rounded-lg border border-emerald-300 bg-white/80 px-2 py-1 text-[10px] font-medium text-emerald-900 transition-colors hover:bg-white"
+                          >
+                            复制
+                          </button>
+                        </div>
                       ))}
                     </div>
                   </div>

@@ -172,8 +172,14 @@ export default function DetailModal() {
   const isFalReconnecting = task.status === 'error' && task.falRecoverable
 
   const formatTime = (ts: number | null) => {
-    if (!ts) return ''
-    return new Date(ts).toLocaleString('zh-CN')
+    if (!Number.isFinite(ts ?? NaN)) return ''
+    const parsed = new Date(ts as number)
+    if (Number.isNaN(parsed.getTime())) return ''
+    try {
+      return parsed.toLocaleString('zh-CN')
+    } catch {
+      return ''
+    }
   }
 
   const formatDuration = () => {

@@ -21,11 +21,12 @@ function loadDevProxyConfig() {
 }
 
 function createManagedGatewayDevPlugin() {
-  const routeMap: Record<string, string> = {
-    '/api/session': 'api/session.js',
-    '/api/login': 'api/login.js',
-    '/api/logout': 'api/logout.js',
-    '/api/generate': 'api/generate.js',
+    const routeMap: Record<string, string> = {
+      '/api/session': 'api/session.js',
+      '/api/login': 'api/login.js',
+      '/api/redeem': 'api/redeem.js',
+      '/api/logout': 'api/logout.js',
+      '/api/generate': 'api/generate.js',
     '/api/admin/session': 'api/admin/session.js',
     '/api/admin/customers': 'api/admin/customers.js',
     '/api/admin/credits': 'api/admin/credits.js',
