@@ -12,3 +12,4 @@ _edge-debug-tests/
 _tmp_*.png
 .env.local
 .env.*.local
+AGENTS.md
