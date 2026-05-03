@@ -10,6 +10,11 @@ _edge-debug-tests/
 .dev-server*.log
 .vite-*.log
 _tmp_*.png
+_tmp_*.log
+_tmp_*.json
+tmp-*.png
+tmp-import/
+tmp-*.zip
 .env.local
 .env.*.local
 AGENTS.md
