@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_PARAMS } from '../types'
 import { DEFAULT_SETTINGS } from './apiProfiles'
-import { callManagedGatewayApi } from './managedGatewayClient'
+import { callManagedGatewayApi, redeemManagedSession } from './managedGatewayClient'
 
 function createNdjsonResponse(lines: unknown[]) {
   const encoder = new TextEncoder()
@@ -96,5 +96,50 @@ describe('callManagedGatewayApi', () => {
       params: { ...DEFAULT_PARAMS },
       inputImageDataUrls: [],
     })).rejects.toThrow('浏览器在等待 /api/generate 响应时连接被中断')
+  })
+})
+
+describe('redeemManagedSession', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('posts the redeem code to the redeem endpoint and returns an authenticated session', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      customer: {
+        id: 'cust_123',
+        email: 'hidden@example.com',
+        name: 'Customer',
+        remainingCredits: 50,
+        status: 'active',
+      },
+      expiresAt: '2026-06-01T00:00:00.000Z',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+
+    const session = await redeemManagedSession(' redeem-code ')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/redeem',
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'same-origin',
+        body: JSON.stringify({ accessCode: ' redeem-code ' }),
+      }),
+    )
+    expect(session).toEqual({
+      status: 'authenticated',
+      customer: {
+        id: 'cust_123',
+        email: 'hidden@example.com',
+        name: 'Customer',
+        remainingCredits: 50,
+        status: 'active',
+      },
+      expiresAt: '2026-06-01T00:00:00.000Z',
+      trial: null,
+    })
   })
 })

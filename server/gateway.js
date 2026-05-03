@@ -61,11 +61,11 @@ export async function processGenerateRequest(request) {
     const anonymousTrial = customer ? null : await getAnonymousTrialState(request)
 
     if (!customer && (!anonymousTrial || anonymousTrial.remainingCredits <= 0)) {
-      throw new Error('免费试用额度已用完，请登录后继续生成')
+      throw new Error('试用已用完，请购买或输入兑换码继续生成')
     }
 
     if (customer && customer.remainingCredits < config.creditsPerRequest) {
-      throw new Error('当前账号额度不足，请联系管理员充值')
+      throw new Error('额度已用完，请购买更多额度或联系客服')
     }
 
     const payload = validateGenerateRequest(await readJsonBody(request, config.maxRequestBodyBytes))
@@ -129,7 +129,7 @@ export async function processGenerateRequest(request) {
                 errorMessage: billingError instanceof Error ? billingError.message : String(billingError),
               },
             })
-            throw new Error('图片已生成，但额度记账失败；为避免重复生成，本次不会自动切换到备用线路，请稍后重试或联系管理员。')
+            throw new Error('图片已生成，但额度记账失败；为避免重复生成，本次不会自动切换到备用线路，请稍后重试或联系客服。')
           }
 
           devLog('generate', 'request-success', {

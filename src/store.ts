@@ -427,24 +427,24 @@ function validateManagedSubmissionSession() {
     if ((trial?.remainingCredits ?? 0) > 0) {
       return true
     }
-    showToast('免费试用额度已用完，请先登录客户账号', 'error')
+    showToast('试用已用完，请购买或输入兑换码继续生成', 'error')
     setShowAuthDialog(true)
     return false
   }
 
   if (!customer) {
-    showToast('请先登录客户账号', 'error')
+    showToast('请输入兑换码后继续生成', 'error')
     setShowAuthDialog(true)
     return false
   }
 
   if (customer.status !== 'active') {
-    showToast('当前账号已被停用，请联系管理员', 'error')
+    showToast('当前兑换已停用，请联系购买渠道处理', 'error')
     return false
   }
 
   if (customer.remainingCredits <= 0) {
-    showToast('当前账号额度不足，请联系管理员充值', 'error')
+    showToast('额度已用完，请购买更多额度或联系客服', 'error')
     return false
   }
 

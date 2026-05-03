@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { getTrialResetGuidance } from '../lib/trialCopy'
 import { useStore, exportData, importData, clearAllData } from '../store'
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 
@@ -10,6 +11,7 @@ export default function SettingsModal() {
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
   const session = useStore((s) => s.session)
   const importInputRef = useRef<HTMLInputElement>(null)
+  const trialGuidance = getTrialResetGuidance(session.status === 'anonymous' ? session.trial : null)
 
   useCloseOnEscape(showSettings, () => setShowSettings(false))
 
@@ -34,7 +36,7 @@ export default function SettingsModal() {
           <div>
             <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">设置</h3>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              登录后即可继续使用，无需额外配置。
+              试用、兑换和本地数据都在这里看。
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -54,22 +56,27 @@ export default function SettingsModal() {
         <div className="space-y-6">
           <section className="space-y-3 rounded-2xl border border-gray-200/70 bg-white/70 p-4 dark:border-white/[0.08] dark:bg-white/[0.03]">
             <div>
-              <h4 className="text-sm font-medium text-gray-800 dark:text-gray-200">账户状态</h4>
+              <h4 className="text-sm font-medium text-gray-800 dark:text-gray-200">使用状态</h4>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                额度和权限以当前账号为准。
+                先试用，用完后购买或输入兑换码。
               </p>
             </div>
             {session.status === 'authenticated' && session.customer ? (
               <div className="space-y-1 text-sm text-gray-700 dark:text-gray-200">
-                <div>邮箱：{session.customer.email}</div>
-                <div>名称：{session.customer.name || '未设置'}</div>
-                <div>额度：{session.customer.remainingCredits}</div>
+                <div>当前额度：{session.customer.remainingCredits}</div>
                 <div>状态：{session.customer.status === 'active' ? '可用' : '停用'}</div>
+                <div>当前浏览器已完成兑换，可直接继续生成。</div>
+                <div>如需加额，请使用顶部的充值/兑换入口。</div>
               </div>
             ) : (
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                未登录。
-                {session.trial ? ` 试用额度：${session.trial.remainingCredits}/${session.trial.limit}。` : ''}
+              <div className="space-y-1 text-sm text-gray-500 dark:text-gray-400">
+                <div>
+                  {session.trial
+                    ? `试用剩余：${session.trial.remainingCredits}/${session.trial.limit}`
+                    : '当前处于匿名试用状态'}
+                </div>
+                <div>{trialGuidance}</div>
+                <div>购买后输入兑换码即可继续使用。</div>
               </div>
             )}
           </section>

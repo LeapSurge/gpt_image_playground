@@ -10,6 +10,7 @@ function createEmptyState() {
     anonymousUsageLogs: [],
     quotaGrants: [],
     anonymousTrials: [],
+    redeemCodes: [],
   }
 }
 
@@ -20,6 +21,23 @@ function toPublicCustomer(customer) {
     name: customer.name,
     remainingCredits: customer.remainingCredits,
     status: customer.status,
+  }
+}
+
+function toPublicRedeemCode(redeemCode, customer = null) {
+  return {
+    id: redeemCode.id,
+    code: redeemCode.codePreview,
+    status: redeemCode.status,
+    credits: redeemCode.credits,
+    source: redeemCode.source,
+    productName: redeemCode.productName,
+    redeemedByCustomerId: redeemCode.redeemedByCustomerId ?? null,
+    redeemedByCustomerEmail: customer?.email ?? null,
+    redeemedByCustomerName: customer?.name ?? null,
+    redeemedAt: redeemCode.redeemedAt ?? null,
+    batchId: redeemCode.batchId,
+    createdAt: redeemCode.createdAt,
   }
 }
 
@@ -65,6 +83,23 @@ export function createFileStore(filePath) {
     return work(state)
   }
 
+  function findActiveCustomerByAccessCodeHash(state, accessCodeHash) {
+    const matches = state.customers.filter((item) =>
+      item.accessCodeHash === accessCodeHash &&
+      item.status === 'active',
+    )
+
+    if (matches.length > 1) {
+      throw new Error('兑换码存在重复配置，请联系管理员处理')
+    }
+
+    return matches[0] ?? null
+  }
+
+  function findRedeemCodeByHash(state, codeHash) {
+    return (state.redeemCodes ?? []).find((item) => item.codeHash === codeHash) ?? null
+  }
+
   return {
     async authenticateCustomer(email, accessCodeHash) {
       return readOnly((state) => {
@@ -77,11 +112,21 @@ export function createFileStore(filePath) {
       })
     },
 
+    async authenticateCustomerByAccessCode(accessCodeHash) {
+      return readOnly((state) => {
+        const customer = findActiveCustomerByAccessCodeHash(state, accessCodeHash)
+        return customer ? toPublicCustomer(customer) : null
+      })
+    },
+
     async createCustomer({ email, name, accessCodeHash, remainingCredits }) {
       return queueWrite((state) => {
         const normalizedEmail = email.toLowerCase()
         if (state.customers.some((item) => item.email.toLowerCase() === normalizedEmail)) {
           throw new Error('客户邮箱已存在')
+        }
+        if (state.customers.some((item) => item.accessCodeHash === accessCodeHash)) {
+          throw new Error('访问码已存在，请重新生成')
         }
         const customer = {
           id: randomId('customer'),
@@ -102,6 +147,112 @@ export function createFileStore(filePath) {
       return readOnly((state) => state.customers.map(toPublicCustomer))
     },
 
+    async createRedeemCodeBatch({ batchId, operator, codes }) {
+      return queueWrite((state) => {
+        state.redeemCodes = state.redeemCodes ?? []
+        for (const code of codes) {
+          if (state.redeemCodes.some((item) => item.codeHash === code.codeHash)) {
+            throw new Error('生成的兑换码与现有码重复，请重试')
+          }
+        }
+
+        const createdAt = new Date().toISOString()
+        const created = codes.map((code) => {
+          const redeemCode = {
+            id: randomId('redeem'),
+            codeHash: code.codeHash,
+            codePreview: code.codePreview,
+            status: 'unused',
+            credits: code.credits,
+            source: code.source,
+            productName: code.productName,
+            redeemedByCustomerId: null,
+            redeemedAt: null,
+            batchId,
+            operator,
+            createdAt,
+          }
+          state.redeemCodes.push(redeemCode)
+          return redeemCode
+        })
+
+        return created.map((item) => toPublicRedeemCode(item))
+      })
+    },
+
+    async listRedeemCodes(limit = 50) {
+      return readOnly((state) => (state.redeemCodes ?? [])
+        .slice()
+        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+        .slice(0, limit)
+        .map((item) => {
+          const customer = item.redeemedByCustomerId
+            ? state.customers.find((customerItem) => customerItem.id === item.redeemedByCustomerId) ?? null
+            : null
+          return toPublicRedeemCode(item, customer)
+        }))
+    },
+
+    async consumeRedeemCode({ codeHash, customerId, createCustomer, operator }) {
+      return queueWrite((state) => {
+        state.redeemCodes = state.redeemCodes ?? []
+        const redeemCode = findRedeemCodeByHash(state, codeHash)
+        if (!redeemCode) {
+          throw new Error('兑换码不正确')
+        }
+        if (redeemCode.status === 'disabled') {
+          throw new Error('兑换码已停用')
+        }
+        if (redeemCode.status === 'redeemed') {
+          throw new Error('兑换码已使用')
+        }
+
+        let customer = customerId
+          ? state.customers.find((item) => item.id === customerId && item.status === 'active') ?? null
+          : null
+        if (customerId && !customer) {
+          throw new Error('当前账户不可用，请重新兑换')
+        }
+
+        if (!customer) {
+          if (!createCustomer) {
+            throw new Error('缺少兑换目标账户')
+          }
+          customer = {
+            id: randomId('customer'),
+            email: createCustomer.email,
+            name: createCustomer.name,
+            accessCodeHash: createCustomer.accessCodeHash,
+            remainingCredits: 0,
+            status: 'active',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
+          state.customers.push(customer)
+        }
+
+        customer.remainingCredits += redeemCode.credits
+        customer.updatedAt = new Date().toISOString()
+        redeemCode.status = 'redeemed'
+        redeemCode.redeemedByCustomerId = customer.id
+        redeemCode.redeemedAt = new Date().toISOString()
+        state.quotaGrants.push({
+          id: randomId('grant'),
+          customerId: customer.id,
+          credits: redeemCode.credits,
+          reason: `redeem:${redeemCode.productName}`,
+          operator,
+          createdAt: new Date().toISOString(),
+        })
+
+        return {
+          customer: toPublicCustomer(customer),
+          redeemCode: toPublicRedeemCode(redeemCode, customer),
+          createdCustomer: !customerId,
+        }
+      })
+    },
+
     async deleteCustomer(customerId) {
       return queueWrite((state) => {
         const customerIndex = state.customers.findIndex((item) => item.id === customerId)
@@ -110,6 +261,14 @@ export function createFileStore(filePath) {
         state.sessions = state.sessions.filter((item) => item.customerId !== customerId)
         state.usageLogs = state.usageLogs.filter((item) => item.customerId !== customerId)
         state.quotaGrants = state.quotaGrants.filter((item) => item.customerId !== customerId)
+        state.redeemCodes = (state.redeemCodes ?? []).map((item) =>
+          item.redeemedByCustomerId === customerId
+            ? {
+                ...item,
+                redeemedByCustomerId: null,
+              }
+            : item,
+        )
         return toPublicCustomer(customer)
       })
     },
@@ -264,7 +423,7 @@ export function createFileStore(filePath) {
         }
 
         if (record.usedCount >= limit) {
-          throw new Error('免费试用额度已用完，请登录后继续生成')
+          throw new Error('试用已用完，请购买或输入兑换码继续生成')
         }
 
         record.usedCount += 1

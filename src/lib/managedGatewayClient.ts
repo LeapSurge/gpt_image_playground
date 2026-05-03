@@ -183,6 +183,24 @@ export async function loginManagedSession(email: string, accessCode: string): Pr
   return normalizeManagedSession(await response.json())
 }
 
+export async function redeemManagedSession(accessCode: string): Promise<ManagedSessionState> {
+  const response = await fetchManagedGateway('/api/redeem', {
+    method: 'POST',
+    cache: 'no-store',
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ accessCode }),
+  })
+
+  if (!response.ok) {
+    throw new Error(await getApiErrorMessage(response))
+  }
+
+  return normalizeManagedSession(await response.json())
+}
+
 export async function logoutManagedSession(): Promise<void> {
   const response = await fetchManagedGateway('/api/logout', {
     method: 'POST',

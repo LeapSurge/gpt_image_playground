@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { logoutManagedSession } from '../lib/managedGatewayClient'
+import { getTrialResetBadge } from '../lib/trialCopy'
 import { useStore } from '../store'
 import { useVersionCheck } from '../hooks/useVersionCheck'
 import HelpModal from './HelpModal'
@@ -12,6 +13,7 @@ export default function Header() {
   const showToast = useStore((s) => s.showToast)
   const { hasUpdate, latestRelease, dismiss } = useVersionCheck()
   const [showHelp, setShowHelp] = useState(false)
+  const trialBadge = getTrialResetBadge(session.status === 'anonymous' ? session.trial : null)
 
   const handleLogout = async () => {
     try {
@@ -22,7 +24,7 @@ export default function Header() {
         expiresAt: null,
         trial: null,
       })
-      showToast('已退出登录', 'success')
+      showToast('已退出当前兑换', 'success')
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), 'error')
     }
@@ -47,37 +49,38 @@ export default function Header() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <div className="hidden sm:flex items-center gap-2 rounded-full border border-gray-200/70 bg-white/70 px-3 py-1 text-xs text-gray-600 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-300">
-            {session.status === 'loading' && <span>账户检查中...</span>}
+          <div className="flex max-w-[48vw] sm:max-w-none items-center gap-2 rounded-full border border-gray-200/70 bg-white/70 px-3 py-1 text-xs text-gray-600 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-300">
+            {session.status === 'loading' && <span>状态检查中...</span>}
             {session.status === 'anonymous' && (
-              <span>
-                未登录
-                {session.trial ? ` | 试用 ${session.trial.remainingCredits}/${session.trial.limit}` : ''}
-              </span>
+              <div className="min-w-0 leading-tight">
+                <div className="truncate font-medium text-gray-700 dark:text-gray-100">
+                  {session.trial ? `试用剩余 ${session.trial.remainingCredits}/${session.trial.limit}` : '匿名试用'}
+                </div>
+                <div className="truncate text-[11px] text-gray-500 dark:text-gray-400">{trialBadge}</div>
+              </div>
             )}
             {session.status === 'authenticated' && session.customer && (
               <>
-                <span className="font-medium text-gray-700 dark:text-gray-100">{session.customer.email}</span>
-                <span className="text-gray-400 dark:text-gray-500">|</span>
+                <span className="hidden sm:inline font-medium text-gray-700 dark:text-gray-100">已兑换</span>
+                <span className="hidden sm:inline text-gray-400 dark:text-gray-500">|</span>
                 <span>额度 {session.customer.remainingCredits}</span>
               </>
             )}
           </div>
-          {session.status === 'authenticated' ? (
+          <button
+            onClick={() => setShowAuthDialog(true)}
+            className="rounded-lg px-3 py-2 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10"
+            title={session.status === 'authenticated' ? '输入兑换码加额' : '购买或输入兑换码'}
+          >
+            {session.status === 'authenticated' ? '充值/兑换' : '购买/兑换'}
+          </button>
+          {session.status === 'authenticated' && (
             <button
               onClick={() => void handleLogout()}
               className="rounded-lg px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-900"
-              title="退出登录"
+              title="退出当前兑换"
             >
               退出
-            </button>
-          ) : (
-            <button
-              onClick={() => setShowAuthDialog(true)}
-              className="rounded-lg px-3 py-2 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10"
-              title="客户登录"
-            >
-              登录
             </button>
           )}
           <button

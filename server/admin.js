@@ -44,6 +44,25 @@ function validateCreditGrantPayload(payload) {
   return { customerId, credits, reason }
 }
 
+function validateRedeemCodeBatchPayload(payload) {
+  const productName = typeof payload.productName === 'string' ? payload.productName.trim() : ''
+  const credits = readPositiveInteger(payload.credits, '额度')
+  const quantity = readPositiveInteger(payload.quantity, '数量')
+  const source = typeof payload.source === 'string' ? payload.source.trim() : ''
+
+  if (!productName) {
+    throw new Error('请输入商品名称')
+  }
+  if (!source) {
+    throw new Error('请输入渠道来源')
+  }
+  if (quantity > 500) {
+    throw new Error('单次最多生成 500 个兑换码')
+  }
+
+  return { productName, credits, quantity, source }
+}
+
 function validateCustomerId(customerId) {
   const normalized = typeof customerId === 'string' ? customerId.trim() : ''
   if (!normalized) {
@@ -80,6 +99,56 @@ export async function grantAdminCredits(payload) {
     reason,
     operator: 'admin-console',
   })
+}
+
+function maskRedeemCode(code) {
+  return `****${code.slice(-4)}`
+}
+
+export async function createAdminRedeemCodeBatch(payload) {
+  const { productName, credits, quantity, source } = validateRedeemCodeBatchPayload(payload)
+  const batchId = randomSecret(8)
+  const createdCodes = Array.from({ length: quantity }, () => {
+    const code = randomSecret(12)
+    return {
+      code,
+      codeHash: hashAccessCode(code),
+      codePreview: maskRedeemCode(code),
+      credits,
+      source,
+      productName,
+      batchId,
+    }
+  })
+
+  const redeemCodes = await getManagedGatewayStore().createRedeemCodeBatch({
+    batchId,
+    operator: 'admin-console',
+    codes: createdCodes.map((item) => ({
+      codeHash: item.codeHash,
+      codePreview: item.codePreview,
+      credits: item.credits,
+      source: item.source,
+      productName: item.productName,
+      batchId: item.batchId,
+    })),
+  })
+
+  return {
+    batchId,
+    createdCodes: redeemCodes.map((item, index) => ({
+      ...item,
+      code: createdCodes[index].code,
+    })),
+  }
+}
+
+export async function listAdminRedeemCodes(limit) {
+  const normalizedLimit = Number.isInteger(limit) ? limit : Number.parseInt(String(limit ?? ''), 10)
+  const safeLimit = Number.isFinite(normalizedLimit)
+    ? Math.max(1, Math.min(200, normalizedLimit))
+    : 50
+  return getManagedGatewayStore().listRedeemCodes(safeLimit)
 }
 
 export async function deleteAdminCustomer(customerId) {

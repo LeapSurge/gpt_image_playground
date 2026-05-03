@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react'
 import {
+  createAdminRedeemCodes,
   createAdminCustomer,
   deleteAdminCustomer,
   fetchAdminCustomers,
+  fetchAdminRedeemCodes,
   fetchAdminSession,
   fetchAdminUsage,
   grantAdminCredits,
   loginAdminSession,
   logoutAdminSession,
 } from './lib/adminClient'
-import type { AdminCustomer, AdminUsageRecord } from './lib/adminClient'
+import type { AdminCustomer, AdminRedeemCode, AdminUsageRecord } from './lib/adminClient'
 
 type AdminViewState = 'loading' | 'unauthenticated' | 'authenticated'
 
@@ -26,23 +28,39 @@ function formatDateTime(value: string) {
   }
 }
 
+function formatRedeemSource(source: string) {
+  if (source === 'card_site') return '发卡站'
+  if (source === 'wechat') return '微信'
+  if (source === 'manual') return '手动'
+  return source
+}
+
 export default function AdminApp() {
   const [viewState, setViewState] = useState<AdminViewState>('loading')
   const [expiresAt, setExpiresAt] = useState<string | null>(null)
   const [customers, setCustomers] = useState<AdminCustomer[]>([])
   const [usage, setUsage] = useState<AdminUsageRecord[]>([])
+  const [redeemCodes, setRedeemCodes] = useState<AdminRedeemCode[]>([])
   const [notice, setNotice] = useState<NoticeState | null>(null)
   const [secret, setSecret] = useState('')
   const [loginSubmitting, setLoginSubmitting] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [createSubmitting, setCreateSubmitting] = useState(false)
+  const [createCodesSubmitting, setCreateCodesSubmitting] = useState(false)
   const [grantSubmitting, setGrantSubmitting] = useState(false)
   const [deletingCustomerId, setDeletingCustomerId] = useState<string | null>(null)
   const [lastCreatedAccessCode, setLastCreatedAccessCode] = useState<string | null>(null)
+  const [lastCreatedCodes, setLastCreatedCodes] = useState<AdminRedeemCode[]>([])
   const [createForm, setCreateForm] = useState({
     email: '',
     name: '',
     credits: '100',
+  })
+  const [codeForm, setCodeForm] = useState({
+    productName: '常用包',
+    credits: '50',
+    quantity: '10',
+    source: 'card_site',
   })
   const [grantForm, setGrantForm] = useState({
     customerId: '',
@@ -51,12 +69,14 @@ export default function AdminApp() {
   })
 
   async function loadDashboard() {
-    const [nextCustomers, nextUsage] = await Promise.all([
+    const [nextCustomers, nextUsage, nextCodes] = await Promise.all([
       fetchAdminCustomers(),
       fetchAdminUsage(20),
+      fetchAdminRedeemCodes(20),
     ])
     setCustomers(nextCustomers)
     setUsage(nextUsage)
+    setRedeemCodes(nextCodes)
     setGrantForm((current) => ({
       ...current,
       customerId: current.customerId || nextCustomers[0]?.id || '',
@@ -141,8 +161,10 @@ export default function AdminApp() {
       setViewState('unauthenticated')
       setCustomers([])
       setUsage([])
+      setRedeemCodes([])
       setExpiresAt(null)
       setLastCreatedAccessCode(null)
+      setLastCreatedCodes([])
       setNotice({
         type: 'success',
         message: '已退出管理员后台',
@@ -213,6 +235,32 @@ export default function AdminApp() {
     }
   }
 
+  const handleCreateRedeemCodes = async () => {
+    if (createCodesSubmitting) return
+    try {
+      setCreateCodesSubmitting(true)
+      const createdCodes = await createAdminRedeemCodes({
+        productName: codeForm.productName.trim(),
+        credits: Number(codeForm.credits),
+        quantity: Number(codeForm.quantity),
+        source: codeForm.source.trim(),
+      })
+      setLastCreatedCodes(createdCodes)
+      await loadDashboard()
+      setNotice({
+        type: 'success',
+        message: `已生成 ${createdCodes.length} 个${codeForm.productName}兑换码`,
+      })
+    } catch (error) {
+      setNotice({
+        type: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setCreateCodesSubmitting(false)
+    }
+  }
+
   const handleDeleteCustomer = async (customer: AdminCustomer) => {
     if (deletingCustomerId) return
     const confirmed = window.confirm(`确定删除客户 ${customer.name}（${customer.email}）吗？这会同时删除该客户的会话和使用记录。`)
@@ -259,6 +307,22 @@ export default function AdminApp() {
     }
   }
 
+  const handleCopyRedeemCodes = async () => {
+    if (!lastCreatedCodes.length) return
+    try {
+      await navigator.clipboard.writeText(lastCreatedCodes.map((item) => item.code).join('\n'))
+      setNotice({
+        type: 'success',
+        message: '兑换码已复制到剪贴板',
+      })
+    } catch (error) {
+      setNotice({
+        type: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.14),_transparent_38%),linear-gradient(180deg,_#f8fafc_0%,_#eff6ff_100%)] text-gray-900">
       <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-8 sm:px-6 lg:px-8">
@@ -268,7 +332,7 @@ export default function AdminApp() {
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Internal Admin</p>
               <h1 className="mt-2 text-3xl font-semibold tracking-tight text-gray-950">Managed Gateway Console</h1>
               <p className="mt-2 max-w-2xl text-sm text-gray-600">
-                仅提供最小运维能力：查看客户、创建客户、手动加额，以及查看最近使用记录。
+                管理客户、批量生成商品兑换码、手动加额，并查看最近使用和兑换情况。
               </p>
             </div>
             {viewState === 'authenticated' && (
@@ -413,7 +477,78 @@ export default function AdminApp() {
 
             <div className="grid gap-6">
               <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+                <h2 className="text-lg font-semibold text-gray-950">生成商品兑换码</h2>
+                <p className="mt-1 text-sm text-gray-500">用于发卡站或微信发码。生成后可直接复制本批兑换码。</p>
+                <div className="mt-4 grid gap-3">
+                  <input
+                    value={codeForm.productName}
+                    onChange={(event) => setCodeForm((current) => ({ ...current, productName: event.target.value }))}
+                    className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-blue-400"
+                    placeholder="商品名称，例如 常用包"
+                  />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input
+                      value={codeForm.credits}
+                      onChange={(event) => setCodeForm((current) => ({ ...current, credits: event.target.value }))}
+                      className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-blue-400"
+                      inputMode="numeric"
+                      placeholder="每码额度"
+                    />
+                    <input
+                      value={codeForm.quantity}
+                      onChange={(event) => setCodeForm((current) => ({ ...current, quantity: event.target.value }))}
+                      className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-blue-400"
+                      inputMode="numeric"
+                      placeholder="生成数量"
+                    />
+                  </div>
+                  <select
+                    value={codeForm.source}
+                    onChange={(event) => setCodeForm((current) => ({ ...current, source: event.target.value }))}
+                    className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-blue-400"
+                  >
+                    <option value="card_site">发卡站</option>
+                    <option value="wechat">微信</option>
+                    <option value="manual">手动</option>
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleCreateRedeemCodes()}
+                  disabled={createCodesSubmitting}
+                  className="mt-4 w-full rounded-2xl bg-gray-950 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+                >
+                  {createCodesSubmitting ? '生成中...' : '生成兑换码'}
+                </button>
+                {lastCreatedCodes.length > 0 && (
+                  <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium">最近生成批次</p>
+                        <p className="mt-1 text-xs text-emerald-700">
+                          {lastCreatedCodes[0].productName} · {lastCreatedCodes[0].credits} 点/码 · 共 {lastCreatedCodes.length} 个
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyRedeemCodes()}
+                        className="rounded-xl border border-emerald-300 bg-white/80 px-3 py-1.5 text-xs font-medium text-emerald-900 transition-colors hover:bg-white"
+                      >
+                        复制整批兑换码
+                      </button>
+                    </div>
+                    <div className="mt-3 max-h-32 space-y-1 overflow-y-auto rounded-xl bg-white/70 px-3 py-2 font-mono text-[11px] text-emerald-900">
+                      {lastCreatedCodes.map((code) => (
+                        <div key={code.id}>{code.code}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
                 <h2 className="text-lg font-semibold text-gray-950">创建客户</h2>
+                <p className="mt-1 text-sm text-gray-500">仅用于人工建档或需要固定客户资料的场景。</p>
                 <div className="mt-4 grid gap-3">
                   <input
                     value={createForm.name}
@@ -500,6 +635,66 @@ export default function AdminApp() {
                 </button>
               </section>
             </div>
+
+            <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] lg:col-span-2">
+              <div className="mb-6">
+                <h2 className="text-lg font-semibold text-gray-950">最近兑换码</h2>
+                <p className="text-sm text-gray-500">查看商品码是否已被使用，以及被哪位客户兑换。</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="text-xs uppercase tracking-[0.18em] text-gray-500">
+                    <tr>
+                      <th className="pb-3 pr-4 font-medium">商品</th>
+                      <th className="pb-3 pr-4 font-medium">额度</th>
+                      <th className="pb-3 pr-4 font-medium">渠道</th>
+                      <th className="pb-3 pr-4 font-medium">状态</th>
+                      <th className="pb-3 pr-4 font-medium">兑换客户</th>
+                      <th className="pb-3 font-medium">创建时间</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {redeemCodes.map((code) => (
+                      <tr key={code.id}>
+                        <td className="py-3 pr-4">
+                          <div className="font-medium text-gray-900">{code.productName}</div>
+                          <div className="font-mono text-xs text-gray-500">{code.code}</div>
+                        </td>
+                        <td className="py-3 pr-4 text-gray-900">{code.credits}</td>
+                        <td className="py-3 pr-4 text-gray-600">{formatRedeemSource(code.source)}</td>
+                        <td className="py-3 pr-4">
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                              code.status === 'redeemed'
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : code.status === 'disabled'
+                                  ? 'bg-gray-100 text-gray-600'
+                                  : 'bg-amber-50 text-amber-700'
+                            }`}
+                          >
+                            {code.status === 'redeemed' ? '已兑换' : code.status === 'disabled' ? '停用' : '未使用'}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4 text-gray-600">
+                          {code.redeemedByCustomerEmail || code.redeemedByCustomerName || '-'}
+                          {code.redeemedAt && (
+                            <div className="text-xs text-gray-500">{formatDateTime(code.redeemedAt)}</div>
+                          )}
+                        </td>
+                        <td className="py-3 text-gray-600">{formatDateTime(code.createdAt)}</td>
+                      </tr>
+                    ))}
+                    {redeemCodes.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-6 text-center text-sm text-gray-500">
+                          暂无兑换码
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
 
             <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] lg:col-span-2">
               <div className="mb-4">

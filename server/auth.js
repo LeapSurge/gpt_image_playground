@@ -17,14 +17,9 @@ export function hashAccessCode(accessCode) {
   return `scrypt:${derived.toString('hex')}`
 }
 
-export async function createAuthenticatedSession(request, email, accessCode) {
+export async function createSessionForCustomer(request, customer) {
   const store = getManagedGatewayStore()
   const config = getManagedGatewayConfig()
-  const customer = await store.authenticateCustomer(normalizeEmail(email), hashAccessCode(accessCode))
-  if (!customer) {
-    throw new Error('邮箱或访问码不正确')
-  }
-
   const rawToken = randomSecret(32)
   const tokenHash = sha256(`${config.sessionSecret}:${rawToken}`)
   const expiresAt = new Date(Date.now() + config.sessionTtlHours * 60 * 60 * 1000)
@@ -39,6 +34,26 @@ export async function createAuthenticatedSession(request, email, accessCode) {
     expiresAt: expiresAt.toISOString(),
     cookie: createSessionCookie(request, rawToken, expiresAt),
   }
+}
+
+export async function createAuthenticatedSession(request, email, accessCode) {
+  const store = getManagedGatewayStore()
+  const customer = await store.authenticateCustomer(normalizeEmail(email), hashAccessCode(accessCode))
+  if (!customer) {
+    throw new Error('邮箱或访问码不正确')
+  }
+
+  return createSessionForCustomer(request, customer)
+}
+
+export async function createAuthenticatedSessionFromAccessCode(request, accessCode) {
+  const store = getManagedGatewayStore()
+  const customer = await store.authenticateCustomerByAccessCode(hashAccessCode(accessCode))
+  if (!customer) {
+    throw new Error('兑换码不正确')
+  }
+
+  return createSessionForCustomer(request, customer)
 }
 
 export async function getSessionFromRequest(request) {

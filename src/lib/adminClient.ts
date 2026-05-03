@@ -29,6 +29,21 @@ export interface AdminUsageRecord {
   createdAt: string
 }
 
+export interface AdminRedeemCode {
+  id: string
+  code: string
+  credits: number
+  productName: string
+  source: string
+  status: 'unused' | 'redeemed' | 'disabled'
+  createdAt: string
+  redeemedAt: string | null
+  redeemedByCustomerId: string | null
+  redeemedByCustomerEmail?: string | null
+  redeemedByCustomerName?: string | null
+  batchId: string
+}
+
 async function getApiErrorMessage(response: Response) {
   try {
     const payload = await response.json()
@@ -120,4 +135,25 @@ export async function grantAdminCredits(input: {
 export async function fetchAdminUsage(limit = 20) {
   const payload = await requestJson<{ usage: AdminUsageRecord[] }>(`/api/admin/usage?limit=${limit}`)
   return payload.usage
+}
+
+export async function fetchAdminRedeemCodes(limit = 20) {
+  const payload = await requestJson<{ redeemCodes: AdminRedeemCode[] }>(`/api/admin/redeem-codes?limit=${limit}`)
+  return payload.redeemCodes
+}
+
+export async function createAdminRedeemCodes(input: {
+  productName: string
+  credits: number
+  quantity: number
+  source: string
+}) {
+  const payload = await requestJson<{ createdCodes: AdminRedeemCode[] }>('/api/admin/redeem-codes', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+  })
+  return payload.createdCodes
 }

@@ -10,6 +10,23 @@ function toPublicCustomer(record) {
   }
 }
 
+function toPublicRedeemCode(record) {
+  return {
+    id: record.id,
+    code: record.code_preview,
+    status: record.status,
+    credits: Number(record.credits),
+    source: record.source,
+    productName: record.product_name,
+    redeemedByCustomerId: record.redeemed_by_customer_id ?? null,
+    redeemedByCustomerEmail: record.redeemed_by_customer_email ?? null,
+    redeemedByCustomerName: record.redeemed_by_customer_name ?? null,
+    redeemedAt: record.redeemed_at ? new Date(record.redeemed_at).toISOString() : null,
+    batchId: record.batch_id,
+    createdAt: new Date(record.created_at).toISOString(),
+  }
+}
+
 export function createNeonStore(databaseUrl, neonFactory) {
   const sql = neonFactory(databaseUrl)
   let schemaPromise = null
@@ -80,6 +97,22 @@ export function createNeonStore(databaseUrl, neonFactory) {
             )
           `,
           sql`
+            CREATE TABLE IF NOT EXISTS managed_redeem_codes (
+              id TEXT PRIMARY KEY,
+              batch_id TEXT NOT NULL,
+              code_hash TEXT UNIQUE NOT NULL,
+              code_preview TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'unused',
+              credits INTEGER NOT NULL,
+              source TEXT NOT NULL,
+              product_name TEXT NOT NULL,
+              redeemed_by_customer_id TEXT REFERENCES managed_customers(id) ON DELETE SET NULL,
+              redeemed_at TIMESTAMPTZ,
+              operator TEXT NOT NULL,
+              created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+          `,
+          sql`
             CREATE TABLE IF NOT EXISTS managed_anonymous_trials (
               ip_hash TEXT PRIMARY KEY,
               used_count INTEGER NOT NULL,
@@ -107,9 +140,34 @@ export function createNeonStore(databaseUrl, neonFactory) {
       return rows[0] ? toPublicCustomer(rows[0]) : null
     },
 
+    async authenticateCustomerByAccessCode(accessCodeHash) {
+      await ensureSchema()
+      const rows = await sql`
+        SELECT id, email, name, remaining_credits, status
+        FROM managed_customers
+        WHERE access_code_hash = ${accessCodeHash}
+          AND status = 'active'
+        ORDER BY created_at ASC
+        LIMIT 2
+      `
+      if (rows.length > 1) {
+        throw new Error('兑换码存在重复配置，请联系管理员处理')
+      }
+      return rows[0] ? toPublicCustomer(rows[0]) : null
+    },
+
     async createCustomer({ email, name, accessCodeHash, remainingCredits }) {
       await ensureSchema()
       const normalizedEmail = email.toLowerCase()
+      const existingAccessCodeRows = await sql`
+        SELECT id
+        FROM managed_customers
+        WHERE access_code_hash = ${accessCodeHash}
+        LIMIT 1
+      `
+      if (existingAccessCodeRows[0]) {
+        throw new Error('访问码已存在，请重新生成')
+      }
       const rows = await sql`
         INSERT INTO managed_customers (id, email, name, access_code_hash, remaining_credits, status)
         VALUES (${randomId('customer')}, ${normalizedEmail}, ${name}, ${accessCodeHash}, ${remainingCredits}, 'active')
@@ -126,6 +184,175 @@ export function createNeonStore(databaseUrl, neonFactory) {
         ORDER BY created_at ASC
       `
       return rows.map(toPublicCustomer)
+    },
+
+    async createRedeemCodeBatch({ batchId, operator, codes }) {
+      await ensureSchema()
+      return sql.transaction(codes.map((code) => sql`
+        INSERT INTO managed_redeem_codes (
+          id,
+          batch_id,
+          code_hash,
+          code_preview,
+          status,
+          credits,
+          source,
+          product_name,
+          operator
+        )
+        VALUES (
+          ${randomId('redeem')},
+          ${batchId},
+          ${code.codeHash},
+          ${code.codePreview},
+          'unused',
+          ${code.credits},
+          ${code.source},
+          ${code.productName},
+          ${operator}
+        )
+        RETURNING
+          id,
+          batch_id,
+          code_preview,
+          status,
+          credits,
+          source,
+          product_name,
+          redeemed_by_customer_id,
+          NULL::TEXT AS redeemed_by_customer_email,
+          NULL::TEXT AS redeemed_by_customer_name,
+          redeemed_at,
+          created_at
+      `)).then((rows) => rows.map(toPublicRedeemCode))
+    },
+
+    async listRedeemCodes(limit = 50) {
+      await ensureSchema()
+      const rows = await sql`
+        SELECT
+          r.id,
+          r.batch_id,
+          r.code_preview,
+          r.status,
+          r.credits,
+          r.source,
+          r.product_name,
+          r.redeemed_by_customer_id,
+          c.email AS redeemed_by_customer_email,
+          c.name AS redeemed_by_customer_name,
+          r.redeemed_at,
+          r.created_at
+        FROM managed_redeem_codes r
+        LEFT JOIN managed_customers c ON c.id = r.redeemed_by_customer_id
+        ORDER BY created_at DESC
+        LIMIT ${limit}
+      `
+      return rows.map(toPublicRedeemCode)
+    },
+
+    async consumeRedeemCode({ codeHash, customerId, createCustomer, operator }) {
+      await ensureSchema()
+      return sql.transaction(async (tx) => {
+        const redeemRows = await tx`
+          SELECT
+            id,
+            batch_id,
+            code_preview,
+            status,
+            credits,
+            source,
+            product_name,
+            redeemed_by_customer_id,
+            redeemed_at,
+            created_at
+          FROM managed_redeem_codes
+          WHERE code_hash = ${codeHash}
+          LIMIT 1
+        `
+        if (!redeemRows[0]) {
+          throw new Error('兑换码不正确')
+        }
+
+        const redeemCode = redeemRows[0]
+        if (redeemCode.status === 'disabled') {
+          throw new Error('兑换码已停用')
+        }
+        if (redeemCode.status === 'redeemed') {
+          throw new Error('兑换码已使用')
+        }
+
+        let resolvedCustomerId = customerId
+        if (!resolvedCustomerId) {
+          if (!createCustomer) {
+            throw new Error('缺少兑换目标账户')
+          }
+          const createdRows = await tx`
+            INSERT INTO managed_customers (id, email, name, access_code_hash, remaining_credits, status)
+            VALUES (${randomId('customer')}, ${createCustomer.email}, ${createCustomer.name}, ${createCustomer.accessCodeHash}, 0, 'active')
+            RETURNING id
+          `
+          resolvedCustomerId = createdRows[0].id
+        }
+
+        const updatedRows = await tx.query(`
+          UPDATE managed_customers
+          SET remaining_credits = remaining_credits + $2, updated_at = NOW()
+          WHERE id = $1
+            AND status = 'active'
+          RETURNING id, email, name, remaining_credits, status
+        `, [resolvedCustomerId, Number(redeemCode.credits)])
+
+        if (!updatedRows[0]) {
+          throw new Error('当前账户不可用，请重新兑换')
+        }
+
+        const redeemedRows = await tx`
+          UPDATE managed_redeem_codes
+          SET
+            status = 'redeemed',
+            redeemed_by_customer_id = ${resolvedCustomerId},
+            redeemed_at = NOW()
+          WHERE id = ${redeemCode.id}
+            AND status = 'unused'
+        RETURNING
+          id,
+          batch_id,
+          code_preview,
+          status,
+          credits,
+          source,
+          product_name,
+          redeemed_by_customer_id,
+          NULL::TEXT AS redeemed_by_customer_email,
+          NULL::TEXT AS redeemed_by_customer_name,
+          redeemed_at,
+          created_at
+        `
+        if (!redeemedRows[0]) {
+          throw new Error('兑换码已使用')
+        }
+
+        redeemedRows[0].redeemed_by_customer_email = updatedRows[0].email
+        redeemedRows[0].redeemed_by_customer_name = updatedRows[0].name
+
+        await tx`
+          INSERT INTO managed_quota_grants (id, customer_id, credits, reason, operator)
+          VALUES (
+            ${randomId('grant')},
+            ${resolvedCustomerId},
+            ${Number(redeemedRows[0].credits)},
+            ${`redeem:${redeemedRows[0].product_name}`},
+            ${operator}
+          )
+        `
+
+        return {
+          customer: toPublicCustomer(updatedRows[0]),
+          redeemCode: toPublicRedeemCode(redeemedRows[0]),
+          createdCustomer: !customerId,
+        }
+      })
     },
 
     async deleteCustomer(customerId) {
@@ -318,7 +545,7 @@ export function createNeonStore(databaseUrl, neonFactory) {
       `, [ipHash, limit, windowMs])
 
       if (!rows[0]) {
-        throw new Error('免费试用额度已用完，请登录后继续生成')
+        throw new Error('试用已用完，请购买或输入兑换码继续生成')
       }
 
       return {

@@ -29,6 +29,7 @@ function createManagedGatewayDevPlugin() {
     '/api/admin/session': 'api/admin/session.js',
     '/api/admin/customers': 'api/admin/customers.js',
     '/api/admin/credits': 'api/admin/credits.js',
+    '/api/admin/redeem-codes': 'api/admin/redeem-codes.js',
     '/api/admin/usage': 'api/admin/usage.js',
   }
 

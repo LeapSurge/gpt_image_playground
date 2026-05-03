@@ -7,6 +7,7 @@ import { MANAGED_OUTPUT_IMAGE_LIMIT, normalizeManagedGatewayParams } from '../li
 import { normalizeImageSize } from '../lib/size'
 import { createMaskPreviewDataUrl } from '../lib/canvasImage'
 import { formatParamValue } from '../lib/paramDisplay'
+import { getTrialResetGuidance } from '../lib/trialCopy'
 import Select from './Select'
 import SizePickerModal from './SizePickerModal'
 import ViewportTooltip from './ViewportTooltip'
@@ -161,17 +162,19 @@ export default function InputBar() {
   const hasAnonymousTrial = anonymousTrialCredits > 0
   const canGenerate = Boolean((isAccountActive && !isOutOfCredits) || hasAnonymousTrial)
   const canSubmit = Boolean(prompt.trim() && canGenerate)
+  const anonymousTrialGuidance =
+    session.status === 'anonymous' ? getTrialResetGuidance(session.trial) : ''
   const submitBlockedReason =
     session.status === 'anonymous'
       ? hasAnonymousTrial
         ? ''
-        : '免费试用额度已用完，请先登录客户账号后继续生成'
+        : '试用已用完，请购买或输入兑换码继续生成'
       : !isLoggedIn
-        ? '请先登录客户账号后再生成'
+        ? '请输入兑换码后继续生成'
         : !isAccountActive
-          ? '当前账号已被停用，请联系管理员'
+          ? '当前兑换已停用，请联系购买渠道处理'
           : isOutOfCredits
-            ? '当前账号额度不足，请联系管理员充值'
+            ? '额度已用完，请购买更多额度或联系客服'
             : ''
   const moderationDisabled = false
   const compressionDisabled = params.output_format === 'png'
@@ -202,11 +205,11 @@ export default function InputBar() {
       return
     }
     if (!isAccountActive) {
-      showToast('当前账号已被停用，请联系管理员', 'error')
+      showToast('当前兑换已停用，请联系购买渠道处理', 'error')
       return
     }
     if (isOutOfCredits) {
-      showToast('当前账号额度不足，请联系管理员充值', 'error')
+      showToast('额度已用完，请购买更多额度或联系客服', 'error')
       return
     }
     void submitTask()
@@ -504,7 +507,8 @@ export default function InputBar() {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault()
-      submitTask()
+      if (!prompt.trim()) return
+      handleSubmitAttempt()
     }
   }
 
@@ -1250,6 +1254,16 @@ export default function InputBar() {
             placeholder="描述你想生成的图片..."
             className="w-full px-4 py-3 rounded-2xl border border-gray-200/60 dark:border-white/[0.08] bg-white/50 dark:bg-white/[0.03] text-sm focus:outline-none leading-relaxed resize-none shadow-sm transition-[border-color,box-shadow] duration-200"
           />
+
+          {session.status === 'anonymous' && session.trial && (
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-xs text-gray-500 dark:text-gray-400">
+              <span className="font-medium text-gray-700 dark:text-gray-200">
+                试用剩余 {session.trial.remainingCredits}/{session.trial.limit}
+              </span>
+              <span className="hidden sm:inline text-gray-300 dark:text-gray-600">·</span>
+              <span>{anonymousTrialGuidance}</span>
+            </div>
+          )}
 
           {/* 参数 + 按钮 */}
           <div className="mt-3">

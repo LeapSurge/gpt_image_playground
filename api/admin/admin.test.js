@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import customersHandler from './customers.js'
+import redeemCodesHandler from './redeem-codes.js'
 import sessionHandler from './session.js'
+import redeemHandler from '../redeem.js'
 import { resetManagedGatewayStoreForTests } from '../../server/store/index.js'
 
 const storePath = path.resolve(process.cwd(), '.tmp-admin-test-store.json')
@@ -144,5 +146,63 @@ describe('admin api', () => {
     await expect(listResponse.json()).resolves.toMatchObject({
       customers: [],
     })
+  })
+
+  it('creates redeem codes and allows anonymous first redeem plus authenticated top-up', async () => {
+    const adminLoginResponse = await sessionHandler.fetch(withJson(
+      'POST',
+      'http://localhost/api/admin/session',
+      { secret: 'admin-secret' },
+    ))
+    const adminCookie = adminLoginResponse.headers.get('set-cookie')
+
+    const createBatchResponse = await redeemCodesHandler.fetch(withJson(
+      'POST',
+      'http://localhost/api/admin/redeem-codes',
+      {
+        productName: '工作包',
+        credits: 20,
+        quantity: 2,
+        source: 'card-site',
+      },
+      { cookie: adminCookie ?? '' },
+    ))
+    expect(createBatchResponse.status).toBe(200)
+    const createdBatch = await createBatchResponse.json()
+    expect(createdBatch.codes).toHaveLength(2)
+
+    const firstRedeemResponse = await redeemHandler.fetch(withJson(
+      'POST',
+      'http://localhost/api/redeem',
+      { accessCode: createdBatch.codes[0].code },
+    ))
+    expect(firstRedeemResponse.status).toBe(200)
+    const firstRedeemPayload = await firstRedeemResponse.json()
+    const customerCookie = firstRedeemResponse.headers.get('set-cookie')
+    expect(customerCookie).toContain('gip_session=')
+    expect(firstRedeemPayload.customer.remainingCredits).toBe(20)
+
+    const secondRedeemResponse = await redeemHandler.fetch(withJson(
+      'POST',
+      'http://localhost/api/redeem',
+      { accessCode: createdBatch.codes[1].code },
+      { cookie: customerCookie ?? '' },
+    ))
+    expect(secondRedeemResponse.status).toBe(200)
+    const secondRedeemPayload = await secondRedeemResponse.json()
+    expect(secondRedeemPayload.customer.id).toBe(firstRedeemPayload.customer.id)
+    expect(secondRedeemPayload.customer.remainingCredits).toBe(40)
+
+    const listCodesResponse = await redeemCodesHandler.fetch(new Request('http://localhost/api/admin/redeem-codes', {
+      method: 'GET',
+      headers: {
+        cookie: adminCookie ?? '',
+      },
+    }))
+    expect(listCodesResponse.status).toBe(200)
+    const listedCodesPayload = await listCodesResponse.json()
+    const currentBatchCodes = listedCodesPayload.codes.filter((item) => item.batchId === createdBatch.batchId)
+    expect(currentBatchCodes).toHaveLength(2)
+    expect(currentBatchCodes.every((item) => item.status === 'redeemed')).toBe(true)
   })
 })
