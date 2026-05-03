@@ -1251,7 +1251,7 @@ export default function InputBar() {
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={handleKeyDown}
             rows={1}
-            placeholder="描述你想生成的图片..."
+            placeholder="先写主体，再补风格和场景；不会写可先点上方案例"
             className="w-full px-4 py-3 rounded-2xl border border-gray-200/60 dark:border-white/[0.08] bg-white/50 dark:bg-white/[0.03] text-sm focus:outline-none leading-relaxed resize-none shadow-sm transition-[border-color,box-shadow] duration-200"
           />
 

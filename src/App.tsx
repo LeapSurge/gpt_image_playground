@@ -16,6 +16,8 @@ import ImageContextMenu from './components/ImageContextMenu'
 import AuthModal from './components/AuthModal'
 
 export default function App() {
+  const tasks = useStore((s) => s.tasks)
+
   useDockerApiUrlMigrationNotice()
 
   useEffect(() => {
@@ -38,7 +40,7 @@ export default function App() {
       <Header />
       <main data-home-main data-drag-select-surface className="pb-48">
         <div className="safe-area-x max-w-7xl mx-auto">
-          <SearchBar />
+          {tasks.length > 0 && <SearchBar />}
           <TaskGrid />
         </div>
       </main>
