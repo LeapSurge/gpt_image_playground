@@ -34,7 +34,7 @@ export default function SettingsModal() {
           <div>
             <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">设置</h3>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              你无需自己配置接口或密钥，登录后即可继续使用。
+              登录后即可继续使用，无需额外配置。
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -56,7 +56,7 @@ export default function SettingsModal() {
             <div>
               <h4 className="text-sm font-medium text-gray-800 dark:text-gray-200">账户状态</h4>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                当前可用额度和使用权限以你的账号状态为准。
+                额度和权限以当前账号为准。
               </p>
             </div>
             {session.status === 'authenticated' && session.customer ? (
@@ -68,8 +68,8 @@ export default function SettingsModal() {
               </div>
             ) : (
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                尚未登录客户账号。
-                {session.trial ? ` 当前浏览器试用额度：${session.trial.remainingCredits}/${session.trial.limit}。` : ''}
+                未登录。
+                {session.trial ? ` 试用额度：${session.trial.remainingCredits}/${session.trial.limit}。` : ''}
               </div>
             )}
           </section>
@@ -78,13 +78,13 @@ export default function SettingsModal() {
             <div>
               <h4 className="text-sm font-medium text-gray-800 dark:text-gray-200">习惯配置</h4>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                这些设置仍然只保存在当前浏览器中。
+                仅保存在当前浏览器。
               </p>
             </div>
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-sm text-gray-700 dark:text-gray-200">提交任务后清空输入框</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">开启后，提交成功时会清空提示词和参考图。</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">提交成功后清空提示词和参考图。</div>
               </div>
               <button
                 type="button"
@@ -103,7 +103,7 @@ export default function SettingsModal() {
             <div>
               <h4 className="text-sm font-medium text-gray-800 dark:text-gray-200">数据管理</h4>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                历史任务、收藏和本地图片保存在当前浏览器中，可手动导入导出。
+                本地记录可导入导出。
               </p>
             </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

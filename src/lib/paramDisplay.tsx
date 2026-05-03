@@ -17,6 +17,21 @@ interface ActualValueBadgeProps {
   variant?: 'highlight' | 'normal'
 }
 
+const PARAM_VALUE_LABELS: Record<string, string> = {
+  auto: '自动',
+  low: '低',
+  medium: '中',
+  high: '高',
+  png: 'PNG',
+  jpeg: 'JPG',
+  webp: 'WebP',
+}
+
+export function formatParamValue(value: unknown) {
+  const normalized = String(value)
+  return PARAM_VALUE_LABELS[normalized.toLowerCase()] ?? normalized
+}
+
 export function ActualValueBadge({ value, className = '', variant = 'highlight' }: ActualValueBadgeProps) {
   const [tooltipVisible, setTooltipVisible] = useState(false)
   const touchTimerRef = useRef<number | null>(null)
@@ -77,47 +92,49 @@ export function getParamDisplay(task: TaskRecord, paramKey: ParamKey, actualPara
 
   return {
     displayValue: String(displayValue),
+    displayLabel: formatParamValue(displayValue),
     isMismatch,
     requestedValue: String(requestedValue),
+    requestedLabel: formatParamValue(requestedValue),
     isAutoResolved: hasActualValue && requestedValue === 'auto' && String(actualValue) !== String(requestedValue),
   }
 }
 
 export function ParamValue({ task, paramKey, className = '', actualParams }: ParamValueProps) {
-  const { displayValue, isMismatch } = getParamDisplay(task, paramKey, actualParams)
+  const { displayLabel, isMismatch } = getParamDisplay(task, paramKey, actualParams)
 
   if (isMismatch) {
-    return <ActualValueBadge value={displayValue} className={className} />
+    return <ActualValueBadge value={displayLabel} className={className} />
   }
 
   return (
     <span className={`${className} bg-gray-100 text-gray-500 dark:bg-white/[0.04] dark:text-gray-400`}>
-      {displayValue}
+      {displayLabel}
     </span>
   )
 }
 
 export function DetailParamValue({ task, paramKey, className = '', actualParams }: ParamValueProps) {
-  const { displayValue, isMismatch, requestedValue, isAutoResolved } = getParamDisplay(task, paramKey, actualParams)
+  const { displayLabel, isMismatch, requestedLabel, isAutoResolved } = getParamDisplay(task, paramKey, actualParams)
 
   if (!isMismatch) {
     if (isAutoResolved) {
       return (
         <span className={`inline-flex items-center gap-1 ${className}`}>
-          <span className="text-gray-700 dark:text-gray-300">{requestedValue}</span>
+          <span className="text-gray-700 dark:text-gray-300">{requestedLabel}</span>
           <span className="text-gray-300 dark:text-gray-600">|</span>
-          <ActualValueBadge value={displayValue} variant="normal" className="rounded px-1 py-0.5" />
+          <ActualValueBadge value={displayLabel} variant="normal" className="rounded px-1 py-0.5" />
         </span>
       )
     }
-    return <span className={`text-gray-700 dark:text-gray-300 ${className}`}>{displayValue}</span>
+    return <span className={`text-gray-700 dark:text-gray-300 ${className}`}>{displayLabel}</span>
   }
 
   return (
     <span className={`inline-flex items-center gap-1 ${className}`}>
-      <span className="text-gray-700 dark:text-gray-300">{requestedValue}</span>
+      <span className="text-gray-700 dark:text-gray-300">{requestedLabel}</span>
       <span className="text-gray-300 dark:text-gray-600">|</span>
-      <ActualValueBadge value={displayValue} className="rounded px-1 py-0.5" />
+      <ActualValueBadge value={displayLabel} className="rounded px-1 py-0.5" />
     </span>
   )
 }

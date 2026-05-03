@@ -6,6 +6,7 @@ import { getChangedParams } from '../lib/paramCompatibility'
 import { MANAGED_OUTPUT_IMAGE_LIMIT, normalizeManagedGatewayParams } from '../lib/managedGatewayCapabilities'
 import { normalizeImageSize } from '../lib/size'
 import { createMaskPreviewDataUrl } from '../lib/canvasImage'
+import { formatParamValue } from '../lib/paramDisplay'
 import Select from './Select'
 import SizePickerModal from './SizePickerModal'
 import ViewportTooltip from './ViewportTooltip'
@@ -176,12 +177,12 @@ export default function InputBar() {
   const compressionDisabled = params.output_format === 'png'
   const outputImageLimit = MANAGED_OUTPUT_IMAGE_LIMIT
   const nLimitHintText = `当前版本一次最多生成 ${outputImageLimit} 张`
-  const displaySize = normalizeImageSize(params.size) || DEFAULT_PARAMS.size
+  const displaySize = formatParamValue(normalizeImageSize(params.size) || DEFAULT_PARAMS.size)
   const qualityOptions = [
-    { label: 'auto', value: 'auto' },
-    { label: 'low', value: 'low' },
-    { label: 'medium', value: 'medium' },
-    { label: 'high', value: 'high' },
+    { label: '自动', value: 'auto' },
+    { label: '低', value: 'low' },
+    { label: '中', value: 'medium' },
+    { label: '高', value: 'high' },
   ]
   const atImageLimit = inputImages.length >= API_MAX_IMAGES
   const maskTargetImage = maskDraft
@@ -1009,7 +1010,7 @@ export default function InputBar() {
           onChange={(val) => setParams({ output_format: val as any })}
           options={[
             { label: 'PNG', value: 'png' },
-            { label: 'JPEG', value: 'jpeg' },
+            { label: 'JPG', value: 'jpeg' },
             { label: 'WebP', value: 'webp' },
           ]}
           className={selectClass}
@@ -1061,8 +1062,8 @@ export default function InputBar() {
             if (!moderationDisabled) setParams({ moderation: val as any })
           }}
           options={[
-            { label: 'auto', value: 'auto' },
-            { label: 'low', value: 'low' },
+            { label: '自动', value: 'auto' },
+            { label: '低', value: 'low' },
           ]}
           disabled={moderationDisabled}
           className={moderationDisabled
