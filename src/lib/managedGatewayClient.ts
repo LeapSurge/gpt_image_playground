@@ -36,9 +36,15 @@ function normalizeManagedGatewayNetworkError(error: unknown, path: string) {
   if (error instanceof Error) {
     const message = error.message.trim()
     if (/networkerror|failed to fetch|fetch failed|load failed|network request failed/i.test(message)) {
+      const hostname = typeof globalThis.location?.hostname === 'string'
+        ? globalThis.location.hostname
+        : ''
+      const isLocal = hostname === 'localhost' || hostname === '127.0.0.1'
       return new Error(
-        `网络请求失败：浏览器在等待 ${path} 响应时连接被中断。` +
-        '本地开发环境请查看项目根目录的 .dev-server.log，重点搜索最近一次 provider attempt-failed、generate request-error 或 dev-api request-finish。',
+        isLocal
+          ? `网络请求失败：浏览器在等待 ${path} 响应时连接被中断。` +
+            '本地开发环境请查看项目根目录的 .dev-server.log，重点搜索最近一次 provider attempt-failed、generate request-error 或 dev-api request-finish。'
+          : `网络请求失败：浏览器在等待 ${path} 响应时连接被中断。请稍后重试；如果持续出现，说明当前生成任务在链路中途被关闭。`,
       )
     }
   }

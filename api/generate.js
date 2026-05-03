@@ -1,7 +1,6 @@
 import { processGenerateRequest } from '../server/gateway.js'
-import { errorResponse, json } from '../server/json.js'
 
-const DEV_STREAM_HEARTBEAT_MS = 10_000
+const STREAM_HEARTBEAT_MS = 10_000
 
 function getErrorStatus(message) {
   return /登录状态已失效|session|401/i.test(message)
@@ -15,10 +14,6 @@ function getErrorStatus(message) {
 
 function createNdjsonLine(payload) {
   return `${JSON.stringify(payload)}\n`
-}
-
-function isDevStreamingEnabled() {
-  return !process.env.VERCEL && process.env.NODE_ENV !== 'production'
 }
 
 function streamGenerateResponse(request) {
@@ -36,7 +31,7 @@ function streamGenerateResponse(request) {
           type: 'heartbeat',
           at: new Date().toISOString(),
         })))
-      }, DEV_STREAM_HEARTBEAT_MS)
+      }, STREAM_HEARTBEAT_MS)
 
       void processGenerateRequest(request)
         .then((result) => {
@@ -76,17 +71,6 @@ export default {
       return new Response('Method Not Allowed', { status: 405 })
     }
 
-    if (isDevStreamingEnabled()) {
-      return streamGenerateResponse(request)
-    }
-
-    try {
-      const result = await processGenerateRequest(request)
-      return json(result)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      const status = getErrorStatus(message)
-      return errorResponse(status, message)
-    }
+    return streamGenerateResponse(request)
   },
 }

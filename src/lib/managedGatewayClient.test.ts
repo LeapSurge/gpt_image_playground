@@ -23,6 +23,7 @@ function createNdjsonResponse(lines: unknown[]) {
 describe('callManagedGatewayApi', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+    Reflect.deleteProperty(globalThis, 'location')
   })
 
   it('parses the dev streaming response and returns the final result payload', async () => {
@@ -93,6 +94,10 @@ describe('callManagedGatewayApi', () => {
   })
 
   it('rewrites generic fetch network errors into a local dev diagnostic message', async () => {
+    Object.defineProperty(globalThis, 'location', {
+      value: { hostname: 'localhost' },
+      configurable: true,
+    })
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'))
 
     await expect(callManagedGatewayApi({
@@ -101,6 +106,21 @@ describe('callManagedGatewayApi', () => {
       params: { ...DEFAULT_PARAMS },
       inputImageDataUrls: [],
     })).rejects.toThrow('浏览器在等待 /api/generate 响应时连接被中断')
+  })
+
+  it('uses a production-friendly network error message outside localhost', async () => {
+    Object.defineProperty(globalThis, 'location', {
+      value: { hostname: 'gpt-image-playground-five-lyart.vercel.app' },
+      configurable: true,
+    })
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'))
+
+    await expect(callManagedGatewayApi({
+      settings: DEFAULT_SETTINGS,
+      prompt: 'prompt',
+      params: { ...DEFAULT_PARAMS },
+      inputImageDataUrls: [],
+    })).rejects.toThrow('请稍后重试；如果持续出现，说明当前生成任务在链路中途被关闭')
   })
 })
 
