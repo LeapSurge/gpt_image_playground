@@ -1,4 +1,4 @@
-# Spec: Tauri Desktop Introduction for GPT Image Playground
+# Spec: Tauri Desktop Introduction for HantuAI
 
 ## Assumptions
 1. The existing Vite + React web app remains the primary codebase.

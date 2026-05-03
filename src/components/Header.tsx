@@ -33,8 +33,15 @@ export default function Header() {
   return (
     <header data-no-drag-select className="safe-area-top sticky top-0 z-40 bg-white/80 dark:bg-gray-950/80 backdrop-blur border-b border-gray-200 dark:border-white/[0.08]">
       <div className="safe-area-x safe-header-inner max-w-7xl mx-auto flex items-center justify-between">
-        <div className="flex items-start gap-1">
-          <h1 className="text-lg font-bold tracking-tight text-gray-800 dark:text-gray-100">GPT Image Playground</h1>
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 overflow-hidden rounded-xl bg-[#00061e]">
+            <img
+              src="/chatgpt-image-may-3.svg"
+              alt="寒兔AI"
+              className="h-full w-full scale-[1.18] object-cover"
+            />
+          </div>
+          <h1 className="text-lg font-bold tracking-tight text-gray-800 dark:text-gray-100">寒兔AI</h1>
           {hasUpdate && latestRelease && (
             <a
               href={latestRelease.url}
