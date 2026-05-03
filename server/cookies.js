@@ -1,7 +1,12 @@
 const SESSION_COOKIE_NAME = 'gip_session'
+const ADMIN_SESSION_COOKIE_NAME = 'gip_admin_session'
 
 export function getSessionCookieName() {
   return SESSION_COOKIE_NAME
+}
+
+export function getAdminSessionCookieName() {
+  return ADMIN_SESSION_COOKIE_NAME
 }
 
 export function parseCookies(request) {
@@ -30,23 +35,47 @@ function shouldUseSecureCookies(request) {
 }
 
 export function createSessionCookie(request, token, expiresAt) {
-  return serializeCookie(SESSION_COOKIE_NAME, token, {
+  return createHttpOnlyCookie(request, SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     path: '/',
     sameSite: 'Lax',
-    secure: shouldUseSecureCookies(request),
     expires: expiresAt,
   })
 }
 
 export function createClearedSessionCookie(request) {
-  return serializeCookie(SESSION_COOKIE_NAME, '', {
+  return createHttpOnlyCookie(request, SESSION_COOKIE_NAME, '', {
     httpOnly: true,
     path: '/',
     sameSite: 'Lax',
-    secure: shouldUseSecureCookies(request),
     expires: new Date(0),
     maxAge: 0,
+  })
+}
+
+export function createAdminSessionCookie(request, token, expiresAt) {
+  return createHttpOnlyCookie(request, ADMIN_SESSION_COOKIE_NAME, token, {
+    httpOnly: true,
+    path: '/',
+    sameSite: 'Lax',
+    expires: expiresAt,
+  })
+}
+
+export function createClearedAdminSessionCookie(request) {
+  return createHttpOnlyCookie(request, ADMIN_SESSION_COOKIE_NAME, '', {
+    httpOnly: true,
+    path: '/',
+    sameSite: 'Lax',
+    expires: new Date(0),
+    maxAge: 0,
+  })
+}
+
+function createHttpOnlyCookie(request, name, value, options = {}) {
+  return serializeCookie(name, value, {
+    ...options,
+    secure: shouldUseSecureCookies(request),
   })
 }
 

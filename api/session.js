@@ -1,5 +1,6 @@
 import { getSessionFromRequest } from '../server/auth.js'
 import { json } from '../server/json.js'
+import { getAnonymousTrialState } from '../server/trial.js'
 
 export default {
   async fetch(request) {
@@ -12,9 +13,13 @@ export default {
       return json({
         customer: null,
         expiresAt: null,
+        trial: await getAnonymousTrialState(request),
       })
     }
 
-    return json(session)
+    return json({
+      ...session,
+      trial: null,
+    })
   },
 }

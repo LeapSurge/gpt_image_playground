@@ -20,6 +20,7 @@ export default function Header() {
         status: 'anonymous',
         customer: null,
         expiresAt: null,
+        trial: null,
       })
       showToast('已退出登录', 'success')
     } catch (error) {
@@ -57,7 +58,12 @@ export default function Header() {
         <div className="flex items-center gap-2">
           <div className="hidden sm:flex items-center gap-2 rounded-full border border-gray-200/70 bg-white/70 px-3 py-1 text-xs text-gray-600 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-300">
             {session.status === 'loading' && <span>账户检查中...</span>}
-            {session.status === 'anonymous' && <span>未登录</span>}
+            {session.status === 'anonymous' && (
+              <span>
+                未登录
+                {session.trial ? ` | 试用 ${session.trial.remainingCredits}/${session.trial.limit}` : ''}
+              </span>
+            )}
             {session.status === 'authenticated' && session.customer && (
               <>
                 <span className="font-medium text-gray-700 dark:text-gray-100">{session.customer.email}</span>

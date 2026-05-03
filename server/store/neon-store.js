@@ -65,6 +65,14 @@ export function createNeonStore(databaseUrl, neonFactory) {
               created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
           `,
+          sql`
+            CREATE TABLE IF NOT EXISTS managed_anonymous_trials (
+              ip_hash TEXT PRIMARY KEY,
+              used_count INTEGER NOT NULL,
+              window_started_at TIMESTAMPTZ NOT NULL,
+              updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+          `,
         ])
       })()
     }
@@ -104,6 +112,59 @@ export function createNeonStore(databaseUrl, neonFactory) {
         ORDER BY created_at ASC
       `
       return rows.map(toPublicCustomer)
+    },
+
+    async deleteCustomer(customerId) {
+      await ensureSchema()
+      const rows = await sql`
+        DELETE FROM managed_customers
+        WHERE id = ${customerId}
+        RETURNING id, email, name, remaining_credits, status
+      `
+      if (!rows[0]) {
+        throw new Error('客户不存在')
+      }
+      return toPublicCustomer(rows[0])
+    },
+
+    async listUsageLogs(limit = 20) {
+      await ensureSchema()
+      const rows = await sql.query(`
+        SELECT
+          l.id,
+          l.customer_id,
+          c.email AS customer_email,
+          c.name AS customer_name,
+          l.credits_delta,
+          l.provider_key,
+          l.provider_label,
+          l.provider_model,
+          l.image_count,
+          l.status,
+          l.prompt_preview,
+          l.error_message,
+          l.created_at
+        FROM managed_usage_logs l
+        JOIN managed_customers c ON c.id = l.customer_id
+        ORDER BY l.created_at DESC
+        LIMIT $1
+      `, [limit])
+
+      return rows.map((row) => ({
+        id: row.id,
+        customerId: row.customer_id,
+        customerEmail: row.customer_email,
+        customerName: row.customer_name,
+        creditsDelta: Number(row.credits_delta),
+        providerKey: row.provider_key,
+        providerLabel: row.provider_label,
+        providerModel: row.provider_model,
+        imageCount: Number(row.image_count),
+        status: row.status,
+        promptPreview: row.prompt_preview,
+        errorMessage: row.error_message,
+        createdAt: new Date(row.created_at).toISOString(),
+      }))
     },
 
     async createSession({ customerId, tokenHash, expiresAt }) {
@@ -155,6 +216,75 @@ export function createNeonStore(databaseUrl, neonFactory) {
         WHERE token_hash = ${tokenHash}
           AND revoked_at IS NULL
       `
+    },
+
+    async getAnonymousTrialBalance({ ipHash, limit, windowMs }) {
+      await ensureSchema()
+      const rows = await sql.query(`
+        SELECT
+          used_count,
+          window_started_at,
+          CASE
+            WHEN window_started_at + ($2 || ' milliseconds')::interval <= NOW() THEN $3
+            ELSE GREATEST(0, $3 - used_count)
+          END AS remaining_credits,
+          CASE
+            WHEN window_started_at + ($2 || ' milliseconds')::interval <= NOW() THEN NULL
+            ELSE (window_started_at + ($2 || ' milliseconds')::interval)
+          END AS reset_at
+        FROM managed_anonymous_trials
+        WHERE ip_hash = $1
+        LIMIT 1
+      `, [ipHash, windowMs, limit])
+
+      if (!rows[0]) {
+        return {
+          remainingCredits: limit,
+          limit,
+          resetAt: null,
+        }
+      }
+
+      return {
+        remainingCredits: Number(rows[0].remaining_credits),
+        limit,
+        resetAt: rows[0].reset_at ? new Date(rows[0].reset_at).toISOString() : null,
+      }
+    },
+
+    async consumeAnonymousTrial({ ipHash, limit, windowMs }) {
+      await ensureSchema()
+      const rows = await sql.query(`
+        INSERT INTO managed_anonymous_trials (ip_hash, used_count, window_started_at, updated_at)
+        VALUES ($1, 1, NOW(), NOW())
+        ON CONFLICT (ip_hash) DO UPDATE
+        SET
+          used_count = CASE
+            WHEN managed_anonymous_trials.window_started_at + ($3 || ' milliseconds')::interval <= NOW() THEN 1
+            ELSE managed_anonymous_trials.used_count + 1
+          END,
+          window_started_at = CASE
+            WHEN managed_anonymous_trials.window_started_at + ($3 || ' milliseconds')::interval <= NOW() THEN NOW()
+            ELSE managed_anonymous_trials.window_started_at
+          END,
+          updated_at = NOW()
+        WHERE managed_anonymous_trials.window_started_at + ($3 || ' milliseconds')::interval <= NOW()
+          OR managed_anonymous_trials.used_count < $2
+        RETURNING
+          used_count,
+          window_started_at,
+          (window_started_at + ($3 || ' milliseconds')::interval) AS reset_at
+      `, [ipHash, limit, windowMs])
+
+      if (!rows[0]) {
+        throw new Error('免费试用额度已用完，请登录后继续生成')
+      }
+
+      return {
+        remainingCredits: Math.max(0, limit - Number(rows[0].used_count)),
+        limit,
+        resetAt: new Date(rows[0].reset_at).toISOString(),
+      }
     },
 
     async consumeCreditsAndLog({ customerId, credits, usageLog }) {

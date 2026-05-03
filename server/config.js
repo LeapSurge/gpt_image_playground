@@ -36,6 +36,7 @@ export function getManagedGatewayConfig() {
   const providers = [createProviderConfig('PRIMARY'), createProviderConfig('SECONDARY')].filter(Boolean)
 
   return {
+    adminSecret: readEnv('ADMIN_SECRET', ''),
     providers,
     creditsPerRequest: readIntEnv('MANAGED_GATEWAY_CREDITS_PER_REQUEST', DEFAULT_CREDITS_PER_REQUEST),
     sessionTtlHours: readIntEnv('MANAGED_GATEWAY_SESSION_TTL_HOURS', DEFAULT_SESSION_TTL_HOURS),

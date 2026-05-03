@@ -156,16 +156,22 @@ export default function InputBar() {
   const isLoggedIn = session.status === 'authenticated' && Boolean(session.customer)
   const isAccountActive = isLoggedIn && session.customer?.status === 'active'
   const isOutOfCredits = Boolean(isAccountActive && session.customer && session.customer.remainingCredits <= 0)
-  const canGenerate = Boolean(isAccountActive && !isOutOfCredits)
+  const anonymousTrialCredits = session.status === 'anonymous' ? session.trial?.remainingCredits ?? 0 : 0
+  const hasAnonymousTrial = anonymousTrialCredits > 0
+  const canGenerate = Boolean((isAccountActive && !isOutOfCredits) || hasAnonymousTrial)
   const canSubmit = Boolean(prompt.trim() && canGenerate)
   const submitBlockedReason =
-    !isLoggedIn
-      ? '请先登录客户账号后再生成'
-      : !isAccountActive
-        ? '当前账号已被停用，请联系管理员'
-        : isOutOfCredits
-          ? '当前账号额度不足，请联系管理员充值'
-          : ''
+    session.status === 'anonymous'
+      ? hasAnonymousTrial
+        ? ''
+        : '免费试用额度已用完，请先登录客户账号后继续生成'
+      : !isLoggedIn
+        ? '请先登录客户账号后再生成'
+        : !isAccountActive
+          ? '当前账号已被停用，请联系管理员'
+          : isOutOfCredits
+            ? '当前账号额度不足，请联系管理员充值'
+            : ''
   const moderationDisabled = false
   const compressionDisabled = params.output_format === 'png'
   const outputImageLimit = MANAGED_OUTPUT_IMAGE_LIMIT
@@ -186,7 +192,11 @@ export default function InputBar() {
     : inputImages
 
   const handleSubmitAttempt = useCallback(() => {
-    if (!isLoggedIn) {
+    if (session.status === 'anonymous' && !hasAnonymousTrial) {
+      setShowAuthDialog(true)
+      return
+    }
+    if (!isLoggedIn && session.status !== 'anonymous') {
       setShowAuthDialog(true)
       return
     }
@@ -199,7 +209,7 @@ export default function InputBar() {
       return
     }
     void submitTask()
-  }, [isAccountActive, isLoggedIn, isOutOfCredits, setShowAuthDialog, showToast])
+  }, [hasAnonymousTrial, isAccountActive, isLoggedIn, isOutOfCredits, session.status, setShowAuthDialog, showToast])
 
   useEffect(() => {
     setOutputCompressionInput(

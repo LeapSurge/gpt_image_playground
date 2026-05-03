@@ -1,3 +1,5 @@
+import { devLog, serializeError } from '../dev-log.js'
+
 const MIME_MAP = {
   png: 'image/png',
   jpeg: 'image/jpeg',
@@ -60,7 +62,7 @@ async function dataUrlToBlob(dataUrl, fallbackType = 'image/png') {
   return blob.type ? blob : new Blob([await blob.arrayBuffer()], { type: fallbackType })
 }
 
-export async function invokeOpenAICompatibleProvider(provider, request) {
+export async function invokeOpenAICompatibleProvider(provider, request, context = {}) {
   const params = {
     ...request.params,
     n: 1,
@@ -70,8 +72,19 @@ export async function invokeOpenAICompatibleProvider(provider, request) {
   const mime = MIME_MAP[params.output_format] || 'image/png'
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), provider.timeoutSeconds * 1000)
+  const startedAt = Date.now()
 
   try {
+    devLog('provider', 'attempt-start', {
+      requestId: context.requestId ?? null,
+      providerKey: provider.key,
+      providerLabel: provider.label,
+      providerModel: provider.model,
+      isEdit,
+      timeoutSeconds: provider.timeoutSeconds,
+      promptLength: prompt.length,
+    })
+
     let response
     if (isEdit) {
       const formData = new FormData()
@@ -131,6 +144,12 @@ export async function invokeOpenAICompatibleProvider(provider, request) {
     }
 
     if (!response.ok) {
+      devLog('provider', 'attempt-http-error', {
+        requestId: context.requestId ?? null,
+        providerKey: provider.key,
+        status: response.status,
+        elapsedMs: Date.now() - startedAt,
+      })
       throw new Error(await getApiErrorMessage(response))
     }
 
@@ -159,6 +178,15 @@ export async function invokeOpenAICompatibleProvider(provider, request) {
     }
 
     const actualParams = mergeActualParams(pickActualParams(payload))
+    devLog('provider', 'attempt-success', {
+      requestId: context.requestId ?? null,
+      providerKey: provider.key,
+      providerLabel: provider.label,
+      providerModel: provider.model,
+      elapsedMs: Date.now() - startedAt,
+      imageCount: images.length,
+      actualParams,
+    })
     return {
       images,
       actualParams,
@@ -171,6 +199,16 @@ export async function invokeOpenAICompatibleProvider(provider, request) {
         model: provider.model,
       },
     }
+  } catch (error) {
+    devLog('provider', 'attempt-failed', {
+      requestId: context.requestId ?? null,
+      providerKey: provider.key,
+      providerLabel: provider.label,
+      providerModel: provider.model,
+      elapsedMs: Date.now() - startedAt,
+      error: serializeError(error),
+    })
+    throw error
   } finally {
     clearTimeout(timeoutId)
   }

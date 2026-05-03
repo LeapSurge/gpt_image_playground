@@ -124,7 +124,7 @@ Use a backend gateway, not rewrites and not direct frontend fetches.
 5. If provider fails, gateway retries or falls back to the next provider
 
 ## Slice Proposal
-Recommended scope: 6 slices.
+Recommended scope: 7 slices.
 
 ### Slice 1: Frontend Deconfiguration
 - Remove user-facing API URL / API key / proxy configuration path from the main UX
@@ -152,6 +152,12 @@ Recommended scope: 6 slices.
 - Add observability, rate limiting, docs, and deployment settings
 - Validate duration limits and production failure modes
 
+### Slice 7: Admin Console
+- Add a minimal internal admin console for operators
+- Protect admin routes with a server-managed `ADMIN_SECRET` login flow
+- Support customer listing, customer creation, manual credit grants, and recent usage inspection
+- Keep the admin surface intentionally narrow and internal-only
+
 ## Platform Recommendation
 Preferred: backend gateway.
 
@@ -172,3 +178,4 @@ If request duration becomes unreliable, move only the gateway backend off Vercel
 3. What is the first-release quota unit: per generation, per image, or weighted credits by size/quality?
 4. Should the first release keep the current built-in access-code login, or swap to a third-party auth provider later?
 5. When should the project move from file-backed local development storage to mandatory Postgres-backed persistence for all environments?
+6. Should the first admin rollout expose only customer + quota operations, or also include trial-IP inspection and reset tools?

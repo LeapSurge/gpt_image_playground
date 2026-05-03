@@ -12,10 +12,106 @@ import {
 
 const MANAGED_GATEWAY_MAX_REQUEST_BYTES = 4 * 1024 * 1024
 
+interface ManagedGatewayStreamResult {
+  type: 'result'
+  data: ManagedGatewayGenerateResponse
+}
+
+interface ManagedGatewayStreamError {
+  type: 'error'
+  status?: number
+  message?: string
+}
+
+interface ManagedGatewayStreamHeartbeat {
+  type: 'accepted' | 'heartbeat'
+}
+
+type ManagedGatewayStreamMessage =
+  | ManagedGatewayStreamResult
+  | ManagedGatewayStreamError
+  | ManagedGatewayStreamHeartbeat
+
+function normalizeManagedGatewayNetworkError(error: unknown, path: string) {
+  if (error instanceof Error) {
+    const message = error.message.trim()
+    if (/networkerror|failed to fetch|fetch failed|load failed|network request failed/i.test(message)) {
+      return new Error(
+        `网络请求失败：浏览器在等待 ${path} 响应时连接被中断。` +
+        '本地开发环境请查看项目根目录的 .dev-server.log，重点搜索最近一次 provider attempt-failed、generate request-error 或 dev-api request-finish。',
+      )
+    }
+  }
+  return error instanceof Error ? error : new Error(String(error))
+}
+
+async function fetchManagedGateway(input: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init)
+  } catch (error) {
+    throw normalizeManagedGatewayNetworkError(error, input)
+  }
+}
+
+async function readManagedGatewayGenerateResponse(response: Response): Promise<ManagedGatewayGenerateResponse> {
+  const contentType = response.headers.get('content-type') ?? ''
+  if (!/application\/x-ndjson/i.test(contentType)) {
+    return response.json() as Promise<ManagedGatewayGenerateResponse>
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) {
+    throw new Error('流式响应没有可读数据')
+  }
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let finalResult: ManagedGatewayGenerateResponse | null = null
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    let newlineIndex = buffer.indexOf('\n')
+    while (newlineIndex >= 0) {
+      const line = buffer.slice(0, newlineIndex).trim()
+      buffer = buffer.slice(newlineIndex + 1)
+      newlineIndex = buffer.indexOf('\n')
+      if (!line) continue
+
+      const payload = JSON.parse(line) as ManagedGatewayStreamMessage
+      if (payload.type === 'result') {
+        finalResult = payload.data
+        continue
+      }
+      if (payload.type === 'error') {
+        throw new Error(payload.message || '长请求处理失败')
+      }
+    }
+  }
+
+  if (!finalResult) {
+    throw new Error('长请求未返回最终结果')
+  }
+  return finalResult
+}
+
 function normalizeManagedSession(payload: unknown): ManagedSessionState {
   const record = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}
   const customer = record.customer && typeof record.customer === 'object'
     ? record.customer as Record<string, unknown>
+    : null
+  const trial = record.trial && typeof record.trial === 'object'
+    ? record.trial as Record<string, unknown>
+    : null
+
+  const normalizedTrial = trial
+    ? {
+        remainingCredits: Number(trial.remainingCredits ?? 0),
+        limit: Number(trial.limit ?? 0),
+        resetAt: typeof trial.resetAt === 'string' ? trial.resetAt : null,
+      }
     : null
 
   if (!customer) {
@@ -23,6 +119,7 @@ function normalizeManagedSession(payload: unknown): ManagedSessionState {
       status: 'anonymous',
       customer: null,
       expiresAt: null,
+      trial: normalizedTrial,
     }
   }
 
@@ -36,6 +133,7 @@ function normalizeManagedSession(payload: unknown): ManagedSessionState {
       status: customer.status === 'disabled' ? 'disabled' : 'active',
     },
     expiresAt: typeof record.expiresAt === 'string' ? record.expiresAt : null,
+    trial: normalizedTrial,
   }
 }
 
@@ -54,7 +152,7 @@ function assertManagedGatewayRequestSize(body: ManagedGatewayGenerateRequest) {
 }
 
 export async function fetchManagedSession(): Promise<ManagedSessionState> {
-  const response = await fetch('/api/session', {
+  const response = await fetchManagedGateway('/api/session', {
     method: 'GET',
     cache: 'no-store',
     credentials: 'same-origin',
@@ -68,7 +166,7 @@ export async function fetchManagedSession(): Promise<ManagedSessionState> {
 }
 
 export async function loginManagedSession(email: string, accessCode: string): Promise<ManagedSessionState> {
-  const response = await fetch('/api/login', {
+  const response = await fetchManagedGateway('/api/login', {
     method: 'POST',
     cache: 'no-store',
     credentials: 'same-origin',
@@ -86,7 +184,7 @@ export async function loginManagedSession(email: string, accessCode: string): Pr
 }
 
 export async function logoutManagedSession(): Promise<void> {
-  const response = await fetch('/api/logout', {
+  const response = await fetchManagedGateway('/api/logout', {
     method: 'POST',
     cache: 'no-store',
     credentials: 'same-origin',
@@ -110,7 +208,7 @@ export async function callManagedGatewayApi(opts: CallApiOptions): Promise<CallA
 
   assertManagedGatewayRequestSize(body)
 
-  const response = await fetch('/api/generate', {
+  const response = await fetchManagedGateway('/api/generate', {
     method: 'POST',
     cache: 'no-store',
     credentials: 'same-origin',
@@ -124,7 +222,7 @@ export async function callManagedGatewayApi(opts: CallApiOptions): Promise<CallA
     throw new Error(await getApiErrorMessage(response))
   }
 
-  const payload = await response.json() as ManagedGatewayGenerateResponse
+  const payload = await readManagedGatewayGenerateResponse(response)
   return {
     images: payload.images,
     actualParams: payload.actualParams,

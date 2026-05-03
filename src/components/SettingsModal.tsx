@@ -67,7 +67,10 @@ export default function SettingsModal() {
                 <div>状态：{session.customer.status === 'active' ? '可用' : '停用'}</div>
               </div>
             ) : (
-              <div className="text-sm text-gray-500 dark:text-gray-400">尚未登录客户账号。</div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                尚未登录客户账号。
+                {session.trial ? ` 当前浏览器试用额度：${session.trial.remainingCredits}/${session.trial.limit}。` : ''}
+              </div>
             )}
           </section>
 

@@ -195,6 +195,7 @@ export const useStore = create<AppState>()(
         status: 'loading',
         customer: null,
         expiresAt: null,
+        trial: null,
       },
       setSession: (session) => set({ session }),
       showAuthDialog: false,
@@ -411,6 +412,7 @@ export async function refreshManagedSession() {
       status: 'anonymous',
       customer: null,
       expiresAt: null,
+      trial: null,
     })
     throw error
   }
@@ -419,8 +421,18 @@ export async function refreshManagedSession() {
 function validateManagedSubmissionSession() {
   const { session, showToast, setShowAuthDialog } = useStore.getState()
   const customer = session.customer
+  const trial = session.trial
 
-  if (session.status !== 'authenticated' || !customer) {
+  if (session.status === 'anonymous') {
+    if ((trial?.remainingCredits ?? 0) > 0) {
+      return true
+    }
+    showToast('免费试用额度已用完，请先登录客户账号', 'error')
+    setShowAuthDialog(true)
+    return false
+  }
+
+  if (!customer) {
     showToast('请先登录客户账号', 'error')
     setShowAuthDialog(true)
     return false
@@ -782,6 +794,8 @@ async function executeTask(taskId: string) {
           },
         })
       }
+    } else if (useStore.getState().session.status === 'anonymous') {
+      void refreshManagedSession().catch(() => undefined)
     }
 
     useStore.getState().showToast(`生成完成，共 ${outputIds.length} 张图片`, 'success')

@@ -1,14 +1,13 @@
 import { createAuthenticatedSession } from '../server/auth.js'
 import { errorResponse, json, readJsonBody } from '../server/json.js'
+import { getClientIp } from '../server/request.js'
 
 const FAILED_LOGIN_WINDOW_MS = 10 * 60 * 1000
 const FAILED_LOGIN_LIMIT = 5
 const failedLoginAttempts = new Map()
 
 function getClientKey(request, email) {
-  const forwardedFor = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-  const clientIp = forwardedFor || request.headers.get('x-real-ip') || 'unknown'
-  return `${clientIp}:${email.trim().toLowerCase()}`
+  return `${getClientIp(request)}:${email.trim().toLowerCase()}`
 }
 
 function isRateLimited(clientKey) {

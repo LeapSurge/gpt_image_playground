@@ -23,3 +23,7 @@ export function getManagedGatewayStore() {
   store = createFileStore(config.fileStorePath)
   return store
 }
+
+export function resetManagedGatewayStoreForTests() {
+  store = null
+}

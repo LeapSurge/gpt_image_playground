@@ -39,10 +39,17 @@ export interface ManagedCustomer {
   status: 'active' | 'disabled'
 }
 
+export interface ManagedTrialState {
+  remainingCredits: number
+  limit: number
+  resetAt: string | null
+}
+
 export interface ManagedSessionState {
   status: ManagedAuthStatus
   customer: ManagedCustomer | null
   expiresAt: string | null
+  trial: ManagedTrialState | null
 }
 
 // ===== 任务参数 =====
@@ -249,5 +256,6 @@ export interface ManagedGatewayGenerateResponse {
     kind: 'openai'
     model: string
   }
-  remainingCredits: number
+  remainingCredits?: number
+  anonymousTrial?: ManagedTrialState
 }

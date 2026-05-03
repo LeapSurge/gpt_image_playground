@@ -31,7 +31,7 @@ Reference spec: [managed-api-gateway-spec.md](./managed-api-gateway-spec.md)
 - Local development uses a file-backed store; deployed environments should provide `DATABASE_URL` for durable quota and session storage
 
 ## Delivery Strategy
-Recommended scope: 6 slices.
+Recommended scope: 7 slices.
 
 Implementation order:
 1. Slice 1: Frontend Deconfiguration
@@ -40,6 +40,7 @@ Implementation order:
 4. Slice 2: Identity and Customer Foundation
 5. Slice 3: Quota Model and Manual Grants
 6. Slice 6: Quota Enforcement and Production Hardening
+7. Slice 7: Admin Console
 
 This order gets the first-party gateway path working before identity and quota are enforced, which reduces early integration risk.
 
@@ -53,6 +54,7 @@ This order gets the first-party gateway path working before identity and quota a
 - Rollout gate before public exposure: decide whether the unauthenticated gateway slices will live only in preview/dev until auth enforcement is added
 - Multi-image behavior: explicitly decide whether unsupported or partial upstream `n > 1` behavior will be blocked, downgraded to single-image, or handled by server-side fan-out later
 - Input-image payload policy: define how much reference-image capability is acceptable before moving to a pre-upload flow
+- Admin access model: confirm the first rollout will use `ADMIN_SECRET` rather than a separate administrator identity system
 
 ## Slice 1: Frontend Deconfiguration
 
@@ -199,6 +201,34 @@ This order gets the first-party gateway path working before identity and quota a
 
 **Estimated scope:** Large
 
+## Slice 7: Admin Console
+
+**Description:** Add a minimal internal admin surface so operators can manage customers and quota without using the CLI directly.
+
+**Acceptance criteria:**
+- [ ] `/admin` routes are protected by a server-managed `ADMIN_SECRET` login flow
+- [ ] Operators can view customers, current balances, and account status
+- [ ] Operators can create customers and issue manual credit grants from the UI
+- [ ] Operators can inspect recent usage records without direct database access
+- [ ] Admin APIs do not expose provider secrets or raw session tokens
+
+**Verification:**
+- [ ] Build succeeds: `npm run build`
+- [ ] Tests pass for admin auth guard and key admin actions
+- [ ] Manual check: unauthenticated `/admin` access is blocked
+- [ ] Manual check: authenticated operator can create a customer and add credits
+- [ ] Manual check: usage list shows recent records for at least one customer
+
+**Dependencies:** Slices 2, 3, and 6
+
+**Files likely touched:**
+- `api/admin/*`
+- `server/` admin auth helpers
+- `src/` admin page and shared UI state
+- deployment docs for `ADMIN_SECRET`
+
+**Estimated scope:** Medium
+
 ## Checkpoint: Gateway Path Ready
 After Slices 1, 4, and 5:
 - [ ] Frontend no longer calls third-party APIs directly
@@ -213,10 +243,11 @@ After Slices 2 and 3:
 - [ ] Data model is sufficient for manual operations
 
 ## Checkpoint: Production Candidate
-After Slice 6:
+After Slices 6 and 7:
 - [ ] Protected generate flow works end-to-end
 - [ ] Quota enforcement is correct
 - [ ] Logs and deployment notes are complete
+- [ ] Operators can manage customers without CLI access
 - [ ] Ready for limited-customer rollout
 
 ## Risks and Mitigations
@@ -229,12 +260,14 @@ After Slice 6:
 | Upstream multi-image behavior is inconsistent | Medium | Treat one image per request as the supported first-release contract and defer server-side fan-out until later |
 | Quota deduction bugs create billing disputes | High | Use explicit success criteria for deduction timing, plus unit tests around rollback rules |
 | Abuse or cost spikes from exposed gateway routes | Medium | Add authentication first, then rate limiting and provider logging before wider rollout |
+| Admin console scope expands into a full back-office product | Medium | Keep the first release limited to customer creation, credit grants, and recent usage only |
 
 ## Operational Notes
 - Start with manual billing outside the product, such as invoice or payment link plus operator-applied quota grants
 - Prefer a simple credit model over provider-specific per-image pricing in the first release
 - Keep provider routing policy static at first; dynamic health scoring can wait
 - Keep the first release on one image per request unless later provider testing justifies a broader contract
+- Keep the first admin release protected by a single `ADMIN_SECRET` session instead of a separate admin user system
 
 ## Future Slice Candidates
 These are intentionally out of scope for the first rollout:

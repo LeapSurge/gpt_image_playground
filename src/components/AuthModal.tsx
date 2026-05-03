@@ -47,7 +47,7 @@ export default function AuthModal() {
         <div className="mb-5">
           <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">客户登录</h3>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            使用管理员分配的邮箱和访问码登录后，才可调用托管网关生成图片。
+            当前浏览器可先免费试用少量额度；用完后使用管理员分配的邮箱和访问码继续生成。
           </p>
         </div>
 

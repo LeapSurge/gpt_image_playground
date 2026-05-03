@@ -32,6 +32,7 @@ describe('mask draft lifecycle in store actions', () => {
         status: 'anonymous',
         customer: null,
         expiresAt: null,
+        trial: null,
       },
       prompt: 'prompt',
       inputImages: [],

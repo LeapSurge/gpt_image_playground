@@ -8,6 +8,7 @@ function createEmptyState() {
     sessions: [],
     usageLogs: [],
     quotaGrants: [],
+    anonymousTrials: [],
   }
 }
 
@@ -100,6 +101,43 @@ export function createFileStore(filePath) {
       return readOnly((state) => state.customers.map(toPublicCustomer))
     },
 
+    async deleteCustomer(customerId) {
+      return queueWrite((state) => {
+        const customerIndex = state.customers.findIndex((item) => item.id === customerId)
+        if (customerIndex === -1) throw new Error('客户不存在')
+        const [customer] = state.customers.splice(customerIndex, 1)
+        state.sessions = state.sessions.filter((item) => item.customerId !== customerId)
+        state.usageLogs = state.usageLogs.filter((item) => item.customerId !== customerId)
+        state.quotaGrants = state.quotaGrants.filter((item) => item.customerId !== customerId)
+        return toPublicCustomer(customer)
+      })
+    },
+
+    async listUsageLogs(limit = 20) {
+      return readOnly((state) => state.usageLogs
+        .slice()
+        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+        .slice(0, limit)
+        .map((log) => {
+          const customer = state.customers.find((item) => item.id === log.customerId)
+          return {
+            id: log.id,
+            customerId: log.customerId,
+            customerEmail: customer?.email ?? '',
+            customerName: customer?.name ?? '',
+            creditsDelta: log.creditsDelta,
+            providerKey: log.providerKey,
+            providerLabel: log.providerLabel,
+            providerModel: log.providerModel,
+            imageCount: log.imageCount,
+            status: log.status,
+            promptPreview: log.promptPreview,
+            errorMessage: log.errorMessage,
+            createdAt: log.createdAt,
+          }
+        }))
+    },
+
     async createSession({ customerId, tokenHash, expiresAt }) {
       return queueWrite((state) => {
         const session = {
@@ -138,6 +176,81 @@ export function createFileStore(filePath) {
         const session = state.sessions.find((item) => item.tokenHash === tokenHash && !item.revokedAt)
         if (session) {
           session.revokedAt = new Date().toISOString()
+        }
+      })
+    },
+
+    async getAnonymousTrialBalance({ ipHash, limit, windowMs }) {
+      return readOnly((state) => {
+        const record = state.anonymousTrials.find((item) => item.ipHash === ipHash)
+        const now = Date.now()
+        if (!record) {
+          return {
+            remainingCredits: limit,
+            limit,
+            resetAt: null,
+          }
+        }
+
+        const windowStartedAt = new Date(record.windowStartedAt).getTime()
+        if (!Number.isFinite(windowStartedAt) || windowStartedAt + windowMs <= now) {
+          return {
+            remainingCredits: limit,
+            limit,
+            resetAt: null,
+          }
+        }
+
+        return {
+          remainingCredits: Math.max(0, limit - record.usedCount),
+          limit,
+          resetAt: new Date(windowStartedAt + windowMs).toISOString(),
+        }
+      })
+    },
+
+    async consumeAnonymousTrial({ ipHash, limit, windowMs }) {
+      return queueWrite((state) => {
+        const now = Date.now()
+        const nowIso = new Date(now).toISOString()
+        const record = state.anonymousTrials.find((item) => item.ipHash === ipHash)
+
+        if (!record) {
+          state.anonymousTrials.push({
+            ipHash,
+            usedCount: 1,
+            windowStartedAt: nowIso,
+            updatedAt: nowIso,
+          })
+          return {
+            remainingCredits: Math.max(0, limit - 1),
+            limit,
+            resetAt: new Date(now + windowMs).toISOString(),
+          }
+        }
+
+        const windowStartedAt = new Date(record.windowStartedAt).getTime()
+        if (!Number.isFinite(windowStartedAt) || windowStartedAt + windowMs <= now) {
+          record.usedCount = 1
+          record.windowStartedAt = nowIso
+          record.updatedAt = nowIso
+          return {
+            remainingCredits: Math.max(0, limit - 1),
+            limit,
+            resetAt: new Date(now + windowMs).toISOString(),
+          }
+        }
+
+        if (record.usedCount >= limit) {
+          throw new Error('免费试用额度已用完，请登录后继续生成')
+        }
+
+        record.usedCount += 1
+        record.updatedAt = nowIso
+        return {
+          remainingCredits: Math.max(0, limit - record.usedCount),
+          limit,
+          resetAt: new Date(windowStartedAt + windowMs).toISOString(),
         }
       })
     },
