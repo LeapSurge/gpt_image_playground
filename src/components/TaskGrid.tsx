@@ -3,7 +3,11 @@ import { useStore, reuseConfig, editOutputs, removeTask } from '../store'
 import FirstImageStarter from './FirstImageStarter'
 import TaskCard from './TaskCard'
 
-export default function TaskGrid() {
+interface TaskGridProps {
+  showStarter: boolean
+}
+
+export default function TaskGrid({ showStarter }: TaskGridProps) {
   const tasks = useStore((s) => s.tasks)
   const searchQuery = useStore((s) => s.searchQuery)
   const filterStatus = useStore((s) => s.filterStatus)
@@ -168,32 +172,11 @@ export default function TaskGrid() {
 
   if (!filteredTasks.length) {
     return (
-      <div className="text-center py-20 text-gray-400 dark:text-gray-500">
+      <div className="py-8 text-gray-400 dark:text-gray-500 sm:py-10">
         {searchQuery || filterFavorite ? (
-          <p className="text-sm">没有找到匹配的记录</p>
+          <p className="text-center text-sm">没有找到匹配的记录</p>
         ) : (
-          <div className="space-y-6 text-left">
-            <div className="rounded-[28px] border border-dashed border-gray-200 bg-white/55 px-6 py-8 text-center dark:border-white/[0.08] dark:bg-white/[0.02]">
-              <svg
-                className="mx-auto mb-4 h-16 w-16 text-gray-200 dark:text-gray-700"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1}
-                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                />
-              </svg>
-              <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">先生成第一张图</h2>
-              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                不知道怎么写提示词也没关系。先点一个案例，再按你的需求改一两句。
-              </p>
-            </div>
-            <FirstImageStarter />
-          </div>
+          <FirstImageStarter />
         )}
       </div>
     )
@@ -205,6 +188,11 @@ export default function TaskGrid() {
       data-task-grid-root
       className="relative min-h-[50vh]"
     >
+      {showStarter && (
+        <div className="mb-4">
+          <FirstImageStarter />
+        </div>
+      )}
       <div ref={gridRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-10">
         {filteredTasks.map((task) => (
           <div key={task.id} className="task-card-wrapper" data-task-id={task.id}>

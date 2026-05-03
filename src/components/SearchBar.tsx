@@ -1,7 +1,12 @@
 import { useStore } from '../store'
 import Select from './Select'
 
-export default function SearchBar() {
+interface SearchBarProps {
+  showStarter: boolean
+  onToggleStarter: () => void
+}
+
+export default function SearchBar({ showStarter, onToggleStarter }: SearchBarProps) {
   const searchQuery = useStore((s) => s.searchQuery)
   const setSearchQuery = useStore((s) => s.setSearchQuery)
   const filterStatus = useStore((s) => s.filterStatus)
@@ -10,7 +15,7 @@ export default function SearchBar() {
   const setFilterFavorite = useStore((s) => s.setFilterFavorite)
 
   return (
-    <div data-no-drag-select className="mt-6 mb-4 flex gap-3">
+    <div data-no-drag-select className="mt-6 mb-4 flex flex-wrap gap-3">
       <div className="flex gap-2 flex-shrink-0 z-20">
         <button
           onClick={() => setFilterFavorite(!filterFavorite)}
@@ -38,8 +43,23 @@ export default function SearchBar() {
             className="px-3 py-2.5 rounded-xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-white/[0.06] text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition"
           />
         </div>
+        <button
+          type="button"
+          onClick={onToggleStarter}
+          className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-gray-900 px-3 py-2.5 text-sm text-gray-500 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition"
+        >
+          <span>{showStarter ? '收起案例' : '提示词案例'}</span>
+          <svg
+            className={`h-4 w-4 transition-transform ${showStarter ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
       </div>
-      <div className="relative flex-1 z-10">
+      <div className="relative min-w-[220px] flex-1 z-10">
         <svg
           className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500"
           fill="none"

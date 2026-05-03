@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { initStore } from './store'
 import { useStore } from './store'
 import { useDockerApiUrlMigrationNotice } from './hooks/useDockerApiUrlMigrationNotice'
@@ -17,6 +17,7 @@ import AuthModal from './components/AuthModal'
 
 export default function App() {
   const tasks = useStore((s) => s.tasks)
+  const [showStarter, setShowStarter] = useState(false)
 
   useDockerApiUrlMigrationNotice()
 
@@ -40,8 +41,8 @@ export default function App() {
       <Header />
       <main data-home-main data-drag-select-surface className="pb-48">
         <div className="safe-area-x max-w-7xl mx-auto">
-          {tasks.length > 0 && <SearchBar />}
-          <TaskGrid />
+          {tasks.length > 0 && <SearchBar showStarter={showStarter} onToggleStarter={() => setShowStarter((value) => !value)} />}
+          <TaskGrid showStarter={showStarter} />
         </div>
       </main>
       <InputBar />
