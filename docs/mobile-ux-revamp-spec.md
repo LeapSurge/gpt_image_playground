@@ -6,6 +6,7 @@
 - [product-design-guidelines.md](/D:/project/gpt_image_playground/docs/product-design-guidelines.md)
 - [user-and-business-foundation.md](/D:/project/gpt_image_playground/docs/user-and-business-foundation.md)
 - [redeem-flow-spec.md](/D:/project/gpt_image_playground/docs/redeem-flow-spec.md)
+- [inputbar-mobile-tray-spec.md](/D:/project/gpt_image_playground/docs/inputbar-mobile-tray-spec.md)
 
 ## 1. 前提与假设
 

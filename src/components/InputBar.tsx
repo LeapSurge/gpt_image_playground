@@ -117,14 +117,12 @@ export default function InputBar() {
   const cardRef = useRef<HTMLDivElement>(null)
   const imagesRef = useRef<HTMLDivElement>(null)
   const prevHeightRef = useRef(42)
+  const trayTouchRef = useRef({ startX: 0, startY: 0, tracking: false })
 
   const [isDragging, setIsDragging] = useState(false)
   const [submitHover, setSubmitHover] = useState(false)
   const [attachHover, setAttachHover] = useState(false)
-  const [compressionHintVisible, setCompressionHintVisible] = useState(false)
-  const [moderationHintVisible, setModerationHintVisible] = useState(false)
-  const [sizeHintVisible, setSizeHintVisible] = useState(false)
-  const [qualityHintVisible, setQualityHintVisible] = useState(false)
+  const [activeParamHint, setActiveParamHint] = useState<null | 'size' | 'quality' | 'compression' | 'moderation' | 'quantity'>(null)
   const [imageHintId, setImageHintId] = useState<string | null>(null)
   const [mobileCollapsed, setMobileCollapsed] = useState(() => window.innerWidth < 640)
   const [showSizePicker, setShowSizePicker] = useState(false)
@@ -138,10 +136,6 @@ export default function InputBar() {
   const imageDragPreviewRef = useRef<HTMLElement | null>(null)
   const suppressImageClickRef = useRef(false)
   const maskConflictNoticeShownRef = useRef(false)
-  const compressionHintTimerRef = useRef<number | null>(null)
-  const moderationHintTimerRef = useRef<number | null>(null)
-  const sizeHintTimerRef = useRef<number | null>(null)
-  const qualityHintTimerRef = useRef<number | null>(null)
   const imageHintTimerRef = useRef<number | null>(null)
   const nLimitHintTimerRef = useRef<number | null>(null)
   const [outputCompressionInput, setOutputCompressionInput] = useState(
@@ -152,6 +146,7 @@ export default function InputBar() {
   const [nLimitHintVisible, setNLimitHintVisible] = useState(false)
   const dragCounter = useRef(0)
   const isMobile = useIsMobile()
+  const trimmedPrompt = prompt.trim()
 
   const isLoggedIn = session.status === 'authenticated' && Boolean(session.customer)
   const isAccountActive = isLoggedIn && session.customer?.status === 'active'
@@ -159,7 +154,7 @@ export default function InputBar() {
   const anonymousTrialCredits = session.status === 'anonymous' ? session.trial?.remainingCredits ?? 0 : 0
   const hasAnonymousTrial = anonymousTrialCredits > 0
   const canGenerate = Boolean((isAccountActive && !isOutOfCredits) || hasAnonymousTrial)
-  const canSubmit = Boolean(prompt.trim() && canGenerate)
+  const canSubmit = Boolean(trimmedPrompt && canGenerate)
   const anonymousTrialGuidance =
     session.status === 'anonymous' ? getTrialResetGuidance(session.trial) : ''
   const submitBlockedReason =
@@ -184,8 +179,11 @@ export default function InputBar() {
   const compressionDisabled = params.output_format === 'png'
   const outputImageLimit = MANAGED_OUTPUT_IMAGE_LIMIT
   const nLimitHintText = `当前版本一次最多生成 ${outputImageLimit} 张`
+  const quantityHintText =
+    outputImageLimit <= 1
+      ? '当前只支持 1 张，多数量暂不可用。'
+      : `当前最多支持 ${outputImageLimit} 张。`
   const displaySize = formatParamValue(normalizeImageSize(params.size) || DEFAULT_PARAMS.size)
-  const mobileParamSummary = `${displaySize} · ${params.output_format.toUpperCase()} · ${params.n} 张`
   const qualityOptions = [
     { label: '自动', value: 'auto' },
     { label: '低', value: 'low' },
@@ -199,10 +197,54 @@ export default function InputBar() {
   const referenceImages = maskTargetImage
     ? inputImages.filter((img) => img.id !== maskTargetImage.id)
     : inputImages
+  const mobileParamSummary = `${displaySize} · ${params.output_format.toUpperCase()} · ${params.n} 张`
+  const mobileImageSummary = maskDraft
+    ? `1 张遮罩主图 · ${referenceImages.length} 张参考图`
+    : inputImages.length > 0
+      ? `${inputImages.length} 张参考图`
+      : '可添加参考图提升稳定性'
 
   const handleSubmitAttempt = useCallback(() => {
     void submitTask()
   }, [])
+
+  const toggleMobileTray = useCallback(() => {
+    if (!isMobile) return
+    setMobileCollapsed((value) => !value)
+  }, [isMobile])
+
+  const canTrackTrayGesture = useCallback((target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false
+    return !target.closest('button, input, textarea, select, [data-input-image-index]')
+  }, [])
+
+  const handleTrayTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobile || !canTrackTrayGesture(e.target)) {
+      trayTouchRef.current.tracking = false
+      return
+    }
+    const touch = e.touches[0]
+    trayTouchRef.current = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      tracking: true,
+    }
+  }, [canTrackTrayGesture, isMobile])
+
+  const handleTrayTouchEnd = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (!trayTouchRef.current.tracking || !isMobile) return
+    trayTouchRef.current.tracking = false
+    const touch = e.changedTouches[0]
+    const deltaX = touch.clientX - trayTouchRef.current.startX
+    const deltaY = touch.clientY - trayTouchRef.current.startY
+    if (Math.abs(deltaY) < 36 || Math.abs(deltaY) <= Math.abs(deltaX)) return
+
+    if (deltaY < 0 && mobileCollapsed) {
+      setMobileCollapsed(false)
+    } else if (deltaY > 0 && !mobileCollapsed) {
+      setMobileCollapsed(true)
+    }
+  }, [isMobile, mobileCollapsed])
 
   useEffect(() => {
     setOutputCompressionInput(
@@ -229,18 +271,6 @@ export default function InputBar() {
   }, [params.n, setParams])
 
   useEffect(() => () => {
-    if (compressionHintTimerRef.current != null) {
-      window.clearTimeout(compressionHintTimerRef.current)
-    }
-    if (moderationHintTimerRef.current != null) {
-      window.clearTimeout(moderationHintTimerRef.current)
-    }
-    if (qualityHintTimerRef.current != null) {
-      window.clearTimeout(qualityHintTimerRef.current)
-    }
-    if (sizeHintTimerRef.current != null) {
-      window.clearTimeout(sizeHintTimerRef.current)
-    }
     if (imageHintTimerRef.current != null) {
       window.clearTimeout(imageHintTimerRef.current)
     }
@@ -248,6 +278,19 @@ export default function InputBar() {
       window.clearTimeout(nLimitHintTimerRef.current)
     }
   }, [])
+
+  useEffect(() => {
+    if (!activeParamHint) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof HTMLElement && target.closest('[data-param-hint]')) return
+      setActiveParamHint(null)
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [activeParamHint])
 
   useEffect(() => {
     let cancelled = false
@@ -338,96 +381,34 @@ export default function InputBar() {
     showNLimitHint()
   }, [nInput, nInputFocused, outputImageLimit, params.n, showNLimitHint])
 
-  const showModerationHint = () => {
-    if (moderationDisabled) setModerationHintVisible(true)
-  }
+  const toggleParamHint = useCallback((hint: 'size' | 'quality' | 'compression' | 'moderation' | 'quantity') => {
+    setActiveParamHint((current) => (current === hint ? null : hint))
+  }, [])
 
-  const hideModerationHint = () => {
-    setModerationHintVisible(false)
-    clearModerationHintTimer()
-  }
-
-  const clearModerationHintTimer = () => {
-    if (moderationHintTimerRef.current != null) {
-      window.clearTimeout(moderationHintTimerRef.current)
-      moderationHintTimerRef.current = null
-    }
-  }
-
-  const startModerationHintTouch = () => {
-    if (!moderationDisabled) return
-    moderationHintTimerRef.current = window.setTimeout(() => {
-      setModerationHintVisible(true)
-      moderationHintTimerRef.current = null
-    }, 450)
-  }
-
-  const showCompressionHint = () => setCompressionHintVisible(true)
-
-  const hideCompressionHint = () => {
-    setCompressionHintVisible(false)
-    clearCompressionHintTimer()
-  }
-
-  const clearCompressionHintTimer = () => {
-    if (compressionHintTimerRef.current != null) {
-      window.clearTimeout(compressionHintTimerRef.current)
-      compressionHintTimerRef.current = null
-    }
-  }
-
-  const startCompressionHintTouch = () => {
-    compressionHintTimerRef.current = window.setTimeout(() => {
-      setCompressionHintVisible(true)
-      compressionHintTimerRef.current = null
-    }, 450)
-  }
-
-  const showQualityHint = () => {
-    setQualityHintVisible(true)
-  }
-
-  const showSizeHint = () => {
-    setSizeHintVisible(true)
-  }
-
-  const hideSizeHint = () => {
-    setSizeHintVisible(false)
-    clearSizeHintTimer()
-  }
-
-  const clearSizeHintTimer = () => {
-    if (sizeHintTimerRef.current != null) {
-      window.clearTimeout(sizeHintTimerRef.current)
-      sizeHintTimerRef.current = null
-    }
-  }
-
-  const startSizeHintTouch = () => {
-    sizeHintTimerRef.current = window.setTimeout(() => {
-      setSizeHintVisible(true)
-      sizeHintTimerRef.current = null
-    }, 450)
-  }
-
-  const hideQualityHint = () => {
-    setQualityHintVisible(false)
-    clearQualityHintTimer()
-  }
-
-  const clearQualityHintTimer = () => {
-    if (qualityHintTimerRef.current != null) {
-      window.clearTimeout(qualityHintTimerRef.current)
-      qualityHintTimerRef.current = null
-    }
-  }
-
-  const startQualityHintTouch = () => {
-    qualityHintTimerRef.current = window.setTimeout(() => {
-      setQualityHintVisible(true)
-      qualityHintTimerRef.current = null
-    }, 450)
-  }
+  const renderParamLabel = (
+    label: string,
+    hint?: 'size' | 'quality' | 'compression' | 'moderation' | 'quantity',
+  ) => (
+    <div className="ml-1 flex items-center gap-1 text-gray-400 dark:text-gray-500">
+      <span>{label}</span>
+      {hint && (
+        <button
+          type="button"
+          data-param-hint
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            toggleParamHint(hint)
+          }}
+          className="mt-[1px] flex h-3.5 w-3.5 items-center justify-center rounded-full border border-gray-300/80 text-[9px] font-semibold leading-none text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-white/[0.12] dark:text-gray-400 dark:hover:border-white/[0.2] dark:hover:text-gray-200"
+          aria-label={`${label}说明`}
+          aria-expanded={activeParamHint === hint}
+        >
+          ?
+        </button>
+      )}
+    </div>
+  )
 
   const clearImageHintTimer = () => {
     if (imageHintTimerRef.current != null) {
@@ -577,17 +558,19 @@ export default function InputBar() {
 
     // 计算图片区域和其他固定元素占用的高度
     const imagesHeight = imagesRef.current?.offsetHeight ?? 0
-    const fixedOverhead = imagesHeight + 140
+    const fixedOverhead = imagesHeight + (isMobile ? (mobileCollapsed ? 118 : 210) : 140)
+    const minH = isMobile ? (mobileCollapsed ? 48 : 116) : 42
 
-    // textarea 最大高度 = 页面 40% 减去固定开销，至少保留 80px
-    const maxH = Math.max(window.innerHeight * 0.4 - fixedOverhead, 80)
+    // textarea 最大高度 = 页面 40% 减去固定开销；收起态保持固定高度。
+    const maxH = mobileCollapsed && isMobile
+      ? minH
+      : Math.max(window.innerHeight * 0.4 - fixedOverhead, minH)
 
     // 1. 关闭过渡动画，设高度为 0 以获取真实的文本内容高度
     el.style.transition = 'none'
     el.style.height = '0'
     el.style.overflowY = 'hidden'
     const scrollH = el.scrollHeight
-    const minH = 42
     const desired = Math.max(scrollH, minH)
     const targetH = desired > maxH ? maxH : desired
 
@@ -601,7 +584,7 @@ export default function InputBar() {
     el.style.overflowY = desired > maxH ? 'auto' : 'hidden'
 
     prevHeightRef.current = targetH
-  }, [])
+  }, [isMobile, mobileCollapsed])
 
   useEffect(() => {
     adjustTextareaHeight()
@@ -613,9 +596,19 @@ export default function InputBar() {
   }, [inputImages.length, Boolean(maskDraft), maskPreviewUrl, adjustTextareaHeight])
 
   useEffect(() => {
+    adjustTextareaHeight()
+  }, [mobileCollapsed, isMobile, adjustTextareaHeight])
+
+  useEffect(() => {
     window.addEventListener('resize', adjustTextareaHeight)
     return () => window.removeEventListener('resize', adjustTextareaHeight)
   }, [adjustTextareaHeight])
+
+  useEffect(() => {
+    if (!isMobile) {
+      setMobileCollapsed(false)
+    }
+  }, [isMobile])
 
   const selectClass = 'px-3 py-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white/50 dark:bg-white/[0.03] hover:bg-white dark:hover:bg-white/[0.06] text-xs transition-all duration-200 shadow-sm'
 
@@ -924,16 +917,8 @@ export default function InputBar() {
 
   const renderParams = (cols: string) => (
     <div className={`grid ${cols} gap-2 text-xs flex-1`}>
-      <label
-        className="relative flex flex-col gap-0.5"
-        onMouseEnter={showSizeHint}
-        onMouseLeave={hideSizeHint}
-        onTouchStart={startSizeHintTouch}
-        onTouchEnd={clearSizeHintTimer}
-        onTouchCancel={hideSizeHint}
-        onClick={showSizeHint}
-      >
-        <span className="text-gray-400 dark:text-gray-500 ml-1">尺寸</span>
+      <label className="relative flex flex-col gap-0.5">
+        {renderParamLabel('尺寸', 'size')}
         <button
           type="button"
           onClick={() => setShowSizePicker(true)}
@@ -943,20 +928,12 @@ export default function InputBar() {
           {displaySize}
         </button>
         <ButtonTooltip
-          visible={sizeHintVisible}
+          visible={activeParamHint === 'size'}
           text="尺寸会在提交前被规整到模型可接受的安全范围。"
         />
       </label>
-      <label
-        className="relative flex flex-col gap-0.5"
-        onMouseEnter={showQualityHint}
-        onMouseLeave={hideQualityHint}
-        onTouchStart={startQualityHintTouch}
-        onTouchEnd={clearQualityHintTimer}
-        onTouchCancel={hideQualityHint}
-        onClick={showQualityHint}
-      >
-        <span className="text-gray-400 dark:text-gray-500 ml-1">质量</span>
+      <label className="relative flex flex-col gap-0.5">
+        {renderParamLabel('质量', 'quality')}
         <Select
           value={params.quality}
           onChange={(val) => setParams({ quality: val as any })}
@@ -964,7 +941,7 @@ export default function InputBar() {
           className={selectClass}
         />
         <ButtonTooltip
-          visible={qualityHintVisible}
+          visible={activeParamHint === 'quality'}
           text="质量会按你的选择提交；最终以生成结果实际生效的参数为准。"
         />
       </label>
@@ -981,16 +958,8 @@ export default function InputBar() {
           className={selectClass}
         />
       </label>
-      <label
-        className="relative flex flex-col gap-0.5"
-        onMouseEnter={showCompressionHint}
-        onMouseLeave={hideCompressionHint}
-        onTouchStart={startCompressionHintTouch}
-        onTouchEnd={clearCompressionHintTimer}
-        onTouchCancel={hideCompressionHint}
-        onClick={showCompressionHint}
-      >
-        <span className="text-gray-400 dark:text-gray-500 ml-1">压缩率</span>
+      <label className="relative flex flex-col gap-0.5">
+        {renderParamLabel('压缩率', 'compression')}
         <input
           value={outputCompressionInput}
           onChange={(e) => setOutputCompressionInput(e.target.value)}
@@ -1007,20 +976,12 @@ export default function InputBar() {
             }`}
         />
         <ButtonTooltip
-          visible={compressionHintVisible}
+          visible={activeParamHint === 'compression'}
           text="仅 JPEG 和 WebP 支持压缩率"
         />
       </label>
-      <label
-        className="relative flex flex-col gap-0.5"
-        onMouseEnter={showModerationHint}
-        onMouseLeave={hideModerationHint}
-        onTouchStart={startModerationHintTouch}
-        onTouchEnd={clearModerationHintTimer}
-        onTouchCancel={hideModerationHint}
-        onClick={showModerationHint}
-      >
-        <span className="text-gray-400 dark:text-gray-500 ml-1">审核</span>
+      <label className="relative flex flex-col gap-0.5">
+        {renderParamLabel('审核', 'moderation')}
         <Select
           value={moderationDisabled ? 'auto' : params.moderation}
           onChange={(val) => {
@@ -1036,12 +997,12 @@ export default function InputBar() {
             : selectClass}
         />
         <ButtonTooltip
-          visible={moderationHintVisible}
+          visible={activeParamHint === 'moderation'}
           text="审核级别会随请求一起提交。"
         />
       </label>
       <label className="relative flex flex-col gap-0.5">
-        <span className="text-gray-400 dark:text-gray-500 ml-1">数量</span>
+        {renderParamLabel('数量', 'quantity')}
         <input
           value={nInput}
           onChange={(e) => handleNInputChange(e.target.value)}
@@ -1066,7 +1027,7 @@ export default function InputBar() {
           disabled
           className="px-3 py-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-gray-100/60 dark:bg-white/[0.05] focus:outline-none text-xs transition-all duration-200 shadow-sm opacity-60 cursor-not-allowed"
         />
-        <ButtonTooltip visible={nLimitHintVisible} text={nLimitHintText} />
+        <ButtonTooltip visible={activeParamHint === 'quantity'} text={quantityHintText} />
       </label>
     </div>
   )
@@ -1175,7 +1136,28 @@ export default function InputBar() {
             </div>
           </div>
         )}
-        <div ref={cardRef} className="bg-white/70 dark:bg-gray-900/70 backdrop-blur-2xl border border-white/50 dark:border-white/[0.08] shadow-[0_8px_30px_rgb(0,0,0,0.08)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.3)] rounded-2xl sm:rounded-3xl p-3 sm:p-4 ring-1 ring-black/5 dark:ring-white/10">
+        <div
+          ref={cardRef}
+          onTouchStart={handleTrayTouchStart}
+          onTouchEnd={handleTrayTouchEnd}
+          className={`bg-white/70 dark:bg-gray-900/70 backdrop-blur-2xl border border-white/50 dark:border-white/[0.08] shadow-[0_8px_30px_rgb(0,0,0,0.08)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.3)] ring-1 ring-black/5 dark:ring-white/10 transition-[padding,border-radius] duration-200 ${
+            isMobile
+              ? mobileCollapsed
+                ? 'rounded-[28px] px-3 py-2.5'
+                : 'rounded-[30px] px-3 py-3.5'
+              : 'rounded-3xl p-4'
+          }`}
+        >
+          <button
+            type="button"
+            className="sm:hidden mb-2 flex w-full justify-center rounded-2xl py-1"
+            onClick={toggleMobileTray}
+            aria-expanded={!mobileCollapsed}
+            aria-label={mobileCollapsed ? '展开创作托盘' : '收起创作托盘'}
+          >
+            <span className="h-1.5 w-11 rounded-full bg-gray-300/90 dark:bg-white/[0.18]" />
+          </button>
+
           {/* 输入图片行（移动端可折叠） */}
           {inputImages.length > 0 && (
             isMobile ? (
@@ -1186,8 +1168,8 @@ export default function InputBar() {
                   </div>
                 </div>
                 {mobileCollapsed && (
-                  <div className="text-xs text-gray-400 dark:text-gray-500 mb-2 ml-1">
-                    {maskDraft ? `1 张遮罩主图 · ${referenceImages.length} 张参考图` : `${inputImages.length} 张参考图`}
+                  <div className="mb-2 rounded-2xl border border-gray-200/70 bg-white/70 px-3 py-2 text-xs text-gray-500 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-400">
+                    {mobileImageSummary}
                   </div>
                 )}
               </>
@@ -1197,17 +1179,38 @@ export default function InputBar() {
           )}
 
           {/* 输入框 */}
-          <textarea
-            ref={textareaRef}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={1}
-            placeholder="先写主体，再补风格和场景；不会写可先点上方案例"
-            className="min-h-[5.75rem] w-full resize-none rounded-[24px] border border-gray-300/80 bg-white/92 px-4 py-4 text-[15px] leading-7 text-gray-900 shadow-[0_10px_28px_rgba(15,23,42,0.08)] transition-[border-color,box-shadow] duration-200 focus:outline-none focus:border-blue-300 dark:border-white/[0.1] dark:bg-white/[0.06] dark:text-gray-100 sm:min-h-0 sm:rounded-2xl sm:border-gray-200/60 sm:bg-white/50 sm:px-4 sm:py-3 sm:text-sm sm:leading-relaxed sm:shadow-sm"
-          />
+          <div
+            className={`rounded-[24px] border transition-[border-color,box-shadow,background-color] duration-200 ${
+              isMobile
+                ? mobileCollapsed
+                  ? 'border-gray-200/80 bg-white/96 px-4 py-3 shadow-[0_6px_18px_rgba(15,23,42,0.06)] dark:border-white/[0.08] dark:bg-white/[0.05]'
+                  : 'border-gray-300/80 bg-white/94 px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)] dark:border-white/[0.1] dark:bg-white/[0.06]'
+                : 'border-gray-200/60 bg-white/50 px-4 py-3 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.03]'
+            }`}
+          >
+            <textarea
+              ref={textareaRef}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onFocus={() => {
+                if (isMobile && mobileCollapsed) {
+                  setMobileCollapsed(false)
+                }
+              }}
+              onKeyDown={handleKeyDown}
+              rows={1}
+              placeholder="先写主体，再补风格和场景；不会写可先点上方案例"
+              className={`w-full resize-none bg-transparent text-gray-900 transition-[border-color,box-shadow] duration-200 focus:outline-none dark:text-gray-100 ${
+                isMobile
+                  ? mobileCollapsed
+                    ? 'min-h-12 text-[14px] leading-6'
+                    : 'min-h-[7.25rem] text-[15px] leading-7'
+                  : 'min-h-0 text-sm leading-relaxed'
+              }`}
+            />
+          </div>
 
-          {session.status === 'anonymous' && session.trial && (
+          {session.status === 'anonymous' && session.trial && !isMobile && (
             <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-xs text-gray-500 dark:text-gray-400">
               <span className="font-medium text-gray-700 dark:text-gray-200">
                 试用剩余 {session.trial.remainingCredits}/{session.trial.limit}
@@ -1216,33 +1219,6 @@ export default function InputBar() {
               <span>{anonymousTrialGuidance}</span>
             </div>
           )}
-
-          <button
-            type="button"
-            className="sm:hidden mt-2 flex w-full items-center justify-between rounded-xl border border-gray-200/70 bg-gray-50/90 px-3 py-1.5 text-left shadow-none transition-colors dark:border-white/[0.08] dark:bg-white/[0.03]"
-            onClick={() => setMobileCollapsed((v) => !v)}
-            aria-expanded={!mobileCollapsed}
-            aria-label={mobileCollapsed ? '展开高级参数' : '收起高级参数'}
-          >
-            <div className="min-w-0">
-              <div className="text-[10px] font-semibold tracking-[0.14em] text-gray-400 dark:text-gray-500">
-                参数
-              </div>
-              <div className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-gray-400">
-                {mobileCollapsed ? `当前 ${mobileParamSummary}` : '尺寸、质量、格式、审核与数量'}
-              </div>
-            </div>
-            <div className="ml-3 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-gray-400 ring-1 ring-gray-200/80 dark:bg-white/[0.05] dark:text-gray-400 dark:ring-white/[0.08]">
-              <svg
-                className={`h-4 w-4 transition-transform duration-200 ${mobileCollapsed ? '' : 'rotate-180'}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
-          </button>
 
           {/* 参数 + 按钮 */}
           <div className="mt-3">
@@ -1299,9 +1275,27 @@ export default function InputBar() {
             <div className="sm:hidden flex flex-col gap-2">
               <div className={`collapse-section${mobileCollapsed ? ' collapsed' : ''}`}>
                 <div className="collapse-inner">
-                  {renderParams('grid-cols-2')}
+                  <div className="rounded-2xl border border-gray-200/80 bg-gray-50/90 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
+                    <div className="mb-2">
+                      <div className="inline-flex items-center rounded-full border border-gray-200/80 bg-white px-2.5 py-1 text-[10px] font-semibold tracking-[0.14em] text-gray-600 ring-1 ring-gray-200/60 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-gray-200 dark:ring-white/[0.08]">
+                        高级参数
+                      </div>
+                    </div>
+                    {renderParams('grid-cols-2')}
+                  </div>
                   <div className="h-2" />
                 </div>
+              </div>
+
+              <div className={`flex items-center gap-3 px-1 text-[11px] ${session.status === 'anonymous' && session.trial ? 'justify-between' : 'justify-end'}`}>
+                <div className="min-w-0 truncate text-gray-400 dark:text-gray-500">
+                  {mobileParamSummary}
+                </div>
+                {session.status === 'anonymous' && session.trial && (
+                  <div className="shrink-0 text-gray-500 dark:text-gray-400">
+                    试用剩余 {session.trial.remainingCredits}/{session.trial.limit}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
