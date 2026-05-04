@@ -14,7 +14,9 @@ const MANAGED_GATEWAY_MAX_REQUEST_BYTES = 4 * 1024 * 1024
 
 interface ManagedGatewayStreamResult {
   type: 'result'
-  data: ManagedGatewayGenerateResponse
+  data: Omit<ManagedGatewayGenerateResponse, 'images'> & {
+    images?: string[]
+  }
 }
 
 interface ManagedGatewayStreamError {
@@ -27,10 +29,42 @@ interface ManagedGatewayStreamHeartbeat {
   type: 'accepted' | 'heartbeat'
 }
 
+interface ManagedGatewayStreamImageStart {
+  type: 'image-start'
+  id: string
+  mime: string
+}
+
+interface ManagedGatewayStreamImageChunk {
+  type: 'image-chunk'
+  id: string
+  data: string
+}
+
+interface ManagedGatewayStreamImageEnd {
+  type: 'image-end'
+  id: string
+}
+
 type ManagedGatewayStreamMessage =
   | ManagedGatewayStreamResult
   | ManagedGatewayStreamError
   | ManagedGatewayStreamHeartbeat
+  | ManagedGatewayStreamImageStart
+  | ManagedGatewayStreamImageChunk
+  | ManagedGatewayStreamImageEnd
+
+function createEmptyGenerateResponse(): ManagedGatewayGenerateResponse {
+  return {
+    images: [],
+    provider: {
+      key: '',
+      label: '',
+      kind: 'openai',
+      model: '',
+    },
+  }
+}
 
 function normalizeManagedGatewayNetworkError(error: unknown, path: string) {
   if (error instanceof Error) {
@@ -73,6 +107,8 @@ async function readManagedGatewayGenerateResponse(response: Response): Promise<M
   const decoder = new TextDecoder()
   let buffer = ''
   let finalResult: ManagedGatewayGenerateResponse | null = null
+  const imageOrder: string[] = []
+  const imageBuffers = new Map<string, { mime: string; chunks: string[] }>()
 
   while (true) {
     const { done, value } = await reader.read()
@@ -87,8 +123,34 @@ async function readManagedGatewayGenerateResponse(response: Response): Promise<M
       if (!line) continue
 
       const payload = JSON.parse(line) as ManagedGatewayStreamMessage
+      if (payload.type === 'image-start') {
+        imageOrder.push(payload.id)
+        imageBuffers.set(payload.id, {
+          mime: payload.mime,
+          chunks: [],
+        })
+        continue
+      }
+      if (payload.type === 'image-chunk') {
+        const image = imageBuffers.get(payload.id)
+        if (!image) {
+          throw new Error('流式图片分块缺少起始事件')
+        }
+        image.chunks.push(payload.data)
+        continue
+      }
+      if (payload.type === 'image-end') {
+        if (!imageBuffers.has(payload.id)) {
+          throw new Error('流式图片结束事件缺少起始事件')
+        }
+        continue
+      }
       if (payload.type === 'result') {
-        finalResult = payload.data
+        finalResult = {
+          ...createEmptyGenerateResponse(),
+          ...payload.data,
+          images: Array.isArray(payload.data.images) ? payload.data.images : [],
+        }
         continue
       }
       if (payload.type === 'error') {
@@ -99,6 +161,15 @@ async function readManagedGatewayGenerateResponse(response: Response): Promise<M
 
   if (!finalResult) {
     throw new Error('长请求未返回最终结果')
+  }
+  if (finalResult.images.length === 0 && imageOrder.length > 0) {
+    finalResult.images = imageOrder.map((imageId) => {
+      const image = imageBuffers.get(imageId)
+      if (!image) {
+        throw new Error('流式图片结果不完整')
+      }
+      return `data:${image.mime};base64,${image.chunks.join('')}`
+    })
   }
   return finalResult
 }

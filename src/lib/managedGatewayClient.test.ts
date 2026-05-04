@@ -78,6 +78,53 @@ describe('callManagedGatewayApi', () => {
     })
   })
 
+  it('reconstructs chunked streamed image payloads before returning the final result', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(createNdjsonResponse([
+      { type: 'accepted', at: '2026-05-03T00:00:00.000Z' },
+      { type: 'image-start', id: 'image-1', mime: 'image/png' },
+      { type: 'image-chunk', id: 'image-1', data: 'aW1h' },
+      { type: 'heartbeat', at: '2026-05-03T00:00:10.000Z' },
+      { type: 'image-chunk', id: 'image-1', data: 'Z2U=' },
+      { type: 'image-end', id: 'image-1' },
+      {
+        type: 'result',
+        data: {
+          actualParams: { size: '2048x2048', quality: 'medium', output_format: 'png' },
+          actualParamsList: [{ size: '2048x2048', quality: 'medium', output_format: 'png' }],
+          revisedPrompts: ['revised prompt'],
+          provider: {
+            key: 'primary',
+            label: 'xtoken-primary',
+            kind: 'openai',
+            model: 'gpt-image-2',
+          },
+          remainingCredits: 97,
+        },
+      },
+    ]))
+
+    const result = await callManagedGatewayApi({
+      settings: DEFAULT_SETTINGS,
+      prompt: 'prompt',
+      params: { ...DEFAULT_PARAMS },
+      inputImageDataUrls: [],
+    })
+
+    expect(result).toMatchObject({
+      images: ['data:image/png;base64,aW1hZ2U='],
+      actualParams: { size: '2048x2048', quality: 'medium', output_format: 'png' },
+      actualParamsList: [{ size: '2048x2048', quality: 'medium', output_format: 'png' }],
+      revisedPrompts: ['revised prompt'],
+      providerInfo: {
+        key: 'primary',
+        label: 'xtoken-primary',
+        kind: 'openai',
+        model: 'gpt-image-2',
+      },
+      remainingCredits: 97,
+    })
+  })
+
   it('surfaces the final streamed error message', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(createNdjsonResponse([
       { type: 'accepted', at: '2026-05-03T00:00:00.000Z' },

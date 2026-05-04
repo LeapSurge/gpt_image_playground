@@ -50,7 +50,97 @@ function getGenerateResponseByteSize(result, remainingCredits) {
   })).byteLength
 }
 
-export async function processGenerateRequest(request) {
+async function finalizeSuccessfulGenerate({
+  store,
+  customer,
+  request,
+  config,
+  provider,
+  result,
+  requestId,
+  startedAt,
+  promptPreview,
+}) {
+  if (customer) {
+    let billedCustomer
+    try {
+      billedCustomer = await store.consumeCreditsAndLog({
+        customerId: customer.id,
+        credits: config.creditsPerRequest,
+        usageLog: {
+          id: randomId('usage'),
+          providerKey: provider.key,
+          providerLabel: provider.label,
+          providerModel: provider.model,
+          imageCount: result.images.length,
+          promptPreview,
+        },
+      })
+    } catch (billingError) {
+      await store.recordFailedUsage({
+        customerId: customer.id,
+        usageLog: {
+          id: randomId('usage'),
+          providerKey: provider.key,
+          providerLabel: provider.label,
+          providerModel: provider.model,
+          imageCount: result.images.length,
+          promptPreview,
+          errorMessage: billingError instanceof Error ? billingError.message : String(billingError),
+        },
+      })
+      throw new Error('图片已生成，但额度记账失败；为避免重复生成，本次不会自动切换到备用线路，请稍后重试或联系客服。')
+    }
+
+    devLog('generate', 'request-success', {
+      requestId,
+      authenticated: true,
+      customerId: customer.id,
+      providerKey: provider.key,
+      providerLabel: provider.label,
+      imageCount: result.images.length,
+      remainingCredits: billedCustomer.remainingCredits,
+      elapsedMs: Date.now() - startedAt,
+    })
+    return {
+      ...result,
+      remainingCredits: billedCustomer.remainingCredits,
+    }
+  }
+
+  try {
+    const trialState = await consumeAnonymousTrial(request)
+    await store.recordAnonymousUsage({
+      usageLog: {
+        id: randomId('usage'),
+        providerKey: provider.key,
+        providerLabel: provider.label,
+        providerModel: provider.model,
+        imageCount: result.images.length,
+        status: 'success',
+        promptPreview,
+        trialRemaining: trialState.remainingCredits,
+      },
+    })
+    devLog('generate', 'request-success', {
+      requestId,
+      authenticated: false,
+      providerKey: provider.key,
+      providerLabel: provider.label,
+      imageCount: result.images.length,
+      trialRemaining: trialState.remainingCredits,
+      elapsedMs: Date.now() - startedAt,
+    })
+    return {
+      ...result,
+      anonymousTrial: trialState,
+    }
+  } catch {
+    throw new Error('图片已生成，但试用额度记账失败；为避免重复生成，本次不会自动切换到备用线路，请稍后重试或登录后继续。')
+  }
+}
+
+export async function processGenerateRequest(request, options = {}) {
   const requestId = request.headers.get('x-request-id') || createDevRequestId('gen')
   const startedAt = Date.now()
   const config = getManagedGatewayConfig()
@@ -90,6 +180,7 @@ export async function processGenerateRequest(request) {
 
     const store = getManagedGatewayStore()
     const attemptErrors = []
+    const promptPreview = buildPromptPreview(payload.prompt)
 
     for (const provider of config.providers) {
       try {
@@ -97,91 +188,35 @@ export async function processGenerateRequest(request) {
         const estimatedRemainingCredits = customer
           ? Math.max(0, customer.remainingCredits - config.creditsPerRequest)
           : undefined
-        if (getGenerateResponseByteSize(result, estimatedRemainingCredits) > config.maxRequestBodyBytes) {
+        if (
+          !options.skipResponseSizeLimit &&
+          getGenerateResponseByteSize(result, estimatedRemainingCredits) > config.maxRequestBodyBytes
+        ) {
           throw new Error('生成结果过大：当前托管网关无法安全返回该图片，请降低尺寸或质量后重试。')
         }
 
-        if (customer) {
-          let billedCustomer
-          try {
-            billedCustomer = await store.consumeCreditsAndLog({
-              customerId: customer.id,
-              credits: config.creditsPerRequest,
-              usageLog: {
-                id: randomId('usage'),
-                providerKey: provider.key,
-                providerLabel: provider.label,
-                providerModel: provider.model,
-                imageCount: result.images.length,
-                promptPreview: buildPromptPreview(payload.prompt),
-              },
-            })
-          } catch (billingError) {
-            await store.recordFailedUsage({
-              customerId: customer.id,
-              usageLog: {
-                id: randomId('usage'),
-                providerKey: provider.key,
-                providerLabel: provider.label,
-                providerModel: provider.model,
-                imageCount: result.images.length,
-                promptPreview: buildPromptPreview(payload.prompt),
-                errorMessage: billingError instanceof Error ? billingError.message : String(billingError),
-              },
-            })
-            throw new Error('图片已生成，但额度记账失败；为避免重复生成，本次不会自动切换到备用线路，请稍后重试或联系客服。')
-          }
-
-          devLog('generate', 'request-success', {
-            requestId,
-            authenticated: true,
-            customerId: customer.id,
-            providerKey: provider.key,
-            providerLabel: provider.label,
-            imageCount: result.images.length,
-            remainingCredits: billedCustomer.remainingCredits,
-            elapsedMs: Date.now() - startedAt,
-          })
-          return {
-            ...result,
-            remainingCredits: billedCustomer.remainingCredits,
-          }
-        }
-
         try {
-          const trialState = await consumeAnonymousTrial(request)
-          await store.recordAnonymousUsage({
-            usageLog: {
-              id: randomId('usage'),
-              providerKey: provider.key,
-              providerLabel: provider.label,
-              providerModel: provider.model,
-              imageCount: result.images.length,
-              status: 'success',
-              promptPreview: buildPromptPreview(payload.prompt),
-              trialRemaining: trialState.remainingCredits,
-            },
-          })
-          devLog('generate', 'request-success', {
-            requestId,
-            authenticated: false,
-            providerKey: provider.key,
-            providerLabel: provider.label,
-            imageCount: result.images.length,
-            trialRemaining: trialState.remainingCredits,
-            elapsedMs: Date.now() - startedAt,
-          })
-          return {
-            ...result,
-            anonymousTrial: trialState,
+          if (typeof options.onGenerated === 'function') {
+            await options.onGenerated(result)
           }
-        } catch (trialError) {
-          throw new Error('图片已生成，但试用额度记账失败；为避免重复生成，本次不会自动切换到备用线路，请稍后重试或登录后继续。')
+          return await finalizeSuccessfulGenerate({
+            store,
+            customer,
+            request,
+            config,
+            provider,
+            result,
+            requestId,
+            startedAt,
+            promptPreview,
+          })
+        } catch (generatedError) {
+          throw generatedError
         }
-      } catch (trialError) {
-        const message = trialError instanceof Error ? trialError.message : String(trialError)
+      } catch (providerError) {
+        const message = providerError instanceof Error ? providerError.message : String(providerError)
         if (/额度记账失败|试用额度记账失败|生成结果过大/.test(message)) {
-          throw trialError
+          throw providerError
         }
         attemptErrors.push(`${provider.label}: ${message}`)
         if (customer) {
@@ -193,7 +228,7 @@ export async function processGenerateRequest(request) {
               providerLabel: provider.label,
               providerModel: provider.model,
               imageCount: 0,
-              promptPreview: buildPromptPreview(payload.prompt),
+              promptPreview,
               errorMessage: message,
             },
           })
@@ -210,7 +245,7 @@ export async function processGenerateRequest(request) {
             providerModel: '-',
             imageCount: 0,
             status: 'failed',
-            promptPreview: buildPromptPreview(payload.prompt),
+            promptPreview,
             errorMessage: attemptErrors.join(' | '),
             trialRemaining: anonymousTrial?.remainingCredits ?? null,
           },
