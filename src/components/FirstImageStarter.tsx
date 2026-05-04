@@ -156,7 +156,50 @@ export default function FirstImageStarter({ mode = 'full', onApply }: FirstImage
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+      <div className="mt-4 grid gap-2 sm:hidden">
+        {STARTER_EXAMPLES.map((example) => (
+          <button
+            key={example.id}
+            type="button"
+            onClick={() => applyExample(example)}
+            className="group rounded-2xl border border-gray-200/80 bg-white/90 px-4 py-3 text-left transition-all active:scale-[0.99] dark:border-white/[0.08] dark:bg-white/[0.03]"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{example.title}</h3>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${levelClass(example.level)}`}>
+                    {example.level}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{example.subtitle}</p>
+              </div>
+              <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600 dark:bg-white/[0.06] dark:text-gray-300">
+                {example.needsReference ? '需参考图' : '可直接生成'}
+              </span>
+            </div>
+
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span className="text-xs text-gray-400 dark:text-gray-500">
+                {example.needsReference ? '先填入，再上传图片' : '先填入，再改几个词'}
+              </span>
+              <span className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-300">
+                一键填入
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 7l5 5m0 0l-5 5m5-5H6"
+                  />
+                </svg>
+              </span>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-4 hidden gap-3 sm:grid lg:grid-cols-3">
         {STARTER_EXAMPLES.map((example) => (
           <button
             key={example.id}
@@ -167,8 +210,8 @@ export default function FirstImageStarter({ mode = 'full', onApply }: FirstImage
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                {example.title}
-              </h3>
+                  {example.title}
+                </h3>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{example.subtitle}</p>
               </div>
               <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${levelClass(example.level)}`}>

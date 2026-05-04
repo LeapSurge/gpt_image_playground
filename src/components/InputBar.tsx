@@ -126,14 +126,12 @@ export default function InputBar() {
   const [sizeHintVisible, setSizeHintVisible] = useState(false)
   const [qualityHintVisible, setQualityHintVisible] = useState(false)
   const [imageHintId, setImageHintId] = useState<string | null>(null)
-  const [mobileCollapsed, setMobileCollapsed] = useState(false)
+  const [mobileCollapsed, setMobileCollapsed] = useState(() => window.innerWidth < 640)
   const [showSizePicker, setShowSizePicker] = useState(false)
   const [maskPreviewUrl, setMaskPreviewUrl] = useState('')
   const [imageDragIndex, setImageDragIndex] = useState<number | null>(null)
   const [imageDragOverIndex, setImageDragOverIndex] = useState<number | null>(null)
   const [touchDragPreview, setTouchDragPreview] = useState<{ src: string; x: number; y: number } | null>(null)
-  const handleRef = useRef<HTMLDivElement>(null)
-  const dragTouchRef = useRef({ startY: 0, moved: false })
   const imageDragIndexRef = useRef<number | null>(null)
   const imageTouchDragRef = useRef({ index: null as number | null, startX: 0, startY: 0, moved: false })
   const imageDragOverIndexRef = useRef<number | null>(null)
@@ -187,6 +185,7 @@ export default function InputBar() {
   const outputImageLimit = MANAGED_OUTPUT_IMAGE_LIMIT
   const nLimitHintText = `当前版本一次最多生成 ${outputImageLimit} 张`
   const displaySize = formatParamValue(normalizeImageSize(params.size) || DEFAULT_PARAMS.size)
+  const mobileParamSummary = `${displaySize} · ${params.output_format.toUpperCase()} · ${params.n} 张`
   const qualityOptions = [
     { label: '自动', value: 'auto' },
     { label: '低', value: 'low' },
@@ -617,34 +616,6 @@ export default function InputBar() {
     window.addEventListener('resize', adjustTextareaHeight)
     return () => window.removeEventListener('resize', adjustTextareaHeight)
   }, [adjustTextareaHeight])
-
-  // 移动端拖动条手势
-  useEffect(() => {
-    const el = handleRef.current
-    if (!el) return
-    const onTouchStart = (e: TouchEvent) => {
-      dragTouchRef.current = { startY: e.touches[0].clientY, moved: false }
-    }
-    const onTouchMove = (e: TouchEvent) => {
-      const dy = e.touches[0].clientY - dragTouchRef.current.startY
-      if (Math.abs(dy) > 10) dragTouchRef.current.moved = true
-      if (dy > 30) setMobileCollapsed(true)
-      if (dy < -30) setMobileCollapsed(false)
-    }
-    const onTouchEnd = () => {
-      if (!dragTouchRef.current.moved) {
-        setMobileCollapsed((v) => !v)
-      }
-    }
-    el.addEventListener('touchstart', onTouchStart, { passive: true })
-    el.addEventListener('touchmove', onTouchMove, { passive: true })
-    el.addEventListener('touchend', onTouchEnd)
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart)
-      el.removeEventListener('touchmove', onTouchMove)
-      el.removeEventListener('touchend', onTouchEnd)
-    }
-  }, [])
 
   const selectClass = 'px-3 py-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white/50 dark:bg-white/[0.03] hover:bg-white dark:hover:bg-white/[0.06] text-xs transition-all duration-200 shadow-sm'
 
@@ -1205,15 +1176,6 @@ export default function InputBar() {
           </div>
         )}
         <div ref={cardRef} className="bg-white/70 dark:bg-gray-900/70 backdrop-blur-2xl border border-white/50 dark:border-white/[0.08] shadow-[0_8px_30px_rgb(0,0,0,0.08)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.3)] rounded-2xl sm:rounded-3xl p-3 sm:p-4 ring-1 ring-black/5 dark:ring-white/10">
-          {/* 移动端拖动条 */}
-          <div
-            ref={handleRef}
-            className="sm:hidden flex justify-center pt-0.5 pb-2 -mt-1 cursor-pointer touch-none"
-            onClick={() => setMobileCollapsed((v) => !v)}
-          >
-            <div className={`w-10 h-1 rounded-full bg-gray-300 dark:bg-white/[0.06] transition-transform duration-200 ${mobileCollapsed ? 'scale-x-75' : ''}`} />
-          </div>
-
           {/* 输入图片行（移动端可折叠） */}
           {inputImages.length > 0 && (
             isMobile ? (
@@ -1242,7 +1204,7 @@ export default function InputBar() {
             onKeyDown={handleKeyDown}
             rows={1}
             placeholder="先写主体，再补风格和场景；不会写可先点上方案例"
-            className="w-full px-4 py-3 rounded-2xl border border-gray-200/60 dark:border-white/[0.08] bg-white/50 dark:bg-white/[0.03] text-sm focus:outline-none leading-relaxed resize-none shadow-sm transition-[border-color,box-shadow] duration-200"
+            className="min-h-[5.75rem] w-full resize-none rounded-[24px] border border-gray-300/80 bg-white/92 px-4 py-4 text-[15px] leading-7 text-gray-900 shadow-[0_10px_28px_rgba(15,23,42,0.08)] transition-[border-color,box-shadow] duration-200 focus:outline-none focus:border-blue-300 dark:border-white/[0.1] dark:bg-white/[0.06] dark:text-gray-100 sm:min-h-0 sm:rounded-2xl sm:border-gray-200/60 sm:bg-white/50 sm:px-4 sm:py-3 sm:text-sm sm:leading-relaxed sm:shadow-sm"
           />
 
           {session.status === 'anonymous' && session.trial && (
@@ -1254,6 +1216,33 @@ export default function InputBar() {
               <span>{anonymousTrialGuidance}</span>
             </div>
           )}
+
+          <button
+            type="button"
+            className="sm:hidden mt-2 flex w-full items-center justify-between rounded-xl border border-gray-200/70 bg-gray-50/90 px-3 py-1.5 text-left shadow-none transition-colors dark:border-white/[0.08] dark:bg-white/[0.03]"
+            onClick={() => setMobileCollapsed((v) => !v)}
+            aria-expanded={!mobileCollapsed}
+            aria-label={mobileCollapsed ? '展开高级参数' : '收起高级参数'}
+          >
+            <div className="min-w-0">
+              <div className="text-[10px] font-semibold tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                参数
+              </div>
+              <div className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-gray-400">
+                {mobileCollapsed ? `当前 ${mobileParamSummary}` : '尺寸、质量、格式、审核与数量'}
+              </div>
+            </div>
+            <div className="ml-3 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-gray-400 ring-1 ring-gray-200/80 dark:bg-white/[0.05] dark:text-gray-400 dark:ring-white/[0.08]">
+              <svg
+                className={`h-4 w-4 transition-transform duration-200 ${mobileCollapsed ? '' : 'rotate-180'}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </button>
 
           {/* 参数 + 按钮 */}
           <div className="mt-3">
@@ -1324,7 +1313,7 @@ export default function InputBar() {
                   <ButtonTooltip visible={atImageLimit && attachHover} text={`参考图数量已达上限（${API_MAX_IMAGES} 张），无法继续添加`} />
                   <button
                     onClick={() => !atImageLimit && fileInputRef.current?.click()}
-                    className={`p-2.5 rounded-xl transition-all shadow-sm flex-shrink-0 ${
+                    className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all shadow-sm flex-shrink-0 ${
                       atImageLimit
                         ? 'bg-gray-200 dark:bg-white/[0.04] text-gray-300 dark:text-gray-500 cursor-not-allowed'
                         : 'bg-gray-200 dark:bg-white/[0.06] hover:bg-gray-300 dark:hover:bg-white/[0.1] text-gray-500 dark:text-gray-300'
@@ -1345,13 +1334,13 @@ export default function InputBar() {
                   <button
                     onClick={handleSubmitAttempt}
                     disabled={canGenerate ? !canSubmit : false}
-                    className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all shadow-sm ${
+                    className={`w-full flex h-12 items-center justify-center gap-2 rounded-2xl text-sm font-semibold transition-all shadow-sm ${
                       !canGenerate
                         ? 'bg-gray-300 dark:bg-white/[0.06] text-white cursor-pointer'
-                        : 'bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-300 dark:disabled:bg-white/[0.04] disabled:opacity-50 disabled:cursor-not-allowed'
+                        : 'bg-blue-600 text-white ring-1 ring-blue-400/40 hover:bg-blue-500 shadow-[0_10px_24px_rgba(37,99,235,0.28)] disabled:bg-gray-300 dark:disabled:bg-white/[0.04] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:ring-0'
                     }`}
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                     </svg>
                     {maskDraft ? '遮罩编辑' : '生成图像'}
