@@ -1,6 +1,5 @@
 import { processGenerateRequest } from '../server/gateway.js'
 
-const STREAM_HEARTBEAT_MS = 10_000
 const IMAGE_CHUNK_BASE64_SIZE = 128 * 1024
 
 function getErrorStatus(message) {
@@ -65,53 +64,20 @@ function streamGeneratedImages(controller, encoder, result) {
   }
 }
 
-function streamGenerateResponse(request) {
+function createStreamGenerateResponse(result) {
   const encoder = new TextEncoder()
 
   return new Response(new ReadableStream({
     start(controller) {
+      streamGeneratedImages(controller, encoder, result)
       emitNdjson(controller, encoder, {
-        type: 'accepted',
-        at: new Date().toISOString(),
-      })
-
-      const heartbeat = setInterval(() => {
-        emitNdjson(controller, encoder, {
-          type: 'heartbeat',
-          at: new Date().toISOString(),
-        })
-      }, STREAM_HEARTBEAT_MS)
-
-      void processGenerateRequest(request, {
-        skipResponseSizeLimit: true,
-        onGenerated(result) {
-          streamGeneratedImages(controller, encoder, result)
+        type: 'result',
+        data: {
+          ...result,
+          images: [],
         },
       })
-        .then((result) => {
-          clearInterval(heartbeat)
-          emitNdjson(controller, encoder, {
-            type: 'result',
-            data: {
-              ...result,
-              images: [],
-            },
-          })
-          controller.close()
-        })
-        .catch((error) => {
-          clearInterval(heartbeat)
-          const message = error instanceof Error ? error.message : String(error)
-          emitNdjson(controller, encoder, {
-            type: 'error',
-            status: getErrorStatus(message),
-            message,
-          })
-          controller.close()
-        })
-    },
-    cancel() {
-      // Browser disconnected. Let the in-flight provider request finish naturally.
+      controller.close()
     },
   }), {
     headers: {
@@ -122,12 +88,34 @@ function streamGenerateResponse(request) {
   })
 }
 
+function createGenerateErrorResponse(error) {
+  const message = error instanceof Error ? error.message : String(error)
+  return new Response(JSON.stringify({
+    error: {
+      message,
+    },
+  }), {
+    status: getErrorStatus(message),
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store, no-cache, max-age=0',
+    },
+  })
+}
+
 export default {
   async fetch(request) {
     if (request.method !== 'POST') {
       return new Response('Method Not Allowed', { status: 405 })
     }
 
-    return streamGenerateResponse(request)
+    try {
+      const result = await processGenerateRequest(request, {
+        skipResponseSizeLimit: true,
+      })
+      return createStreamGenerateResponse(result)
+    } catch (error) {
+      return createGenerateErrorResponse(error)
+    }
   },
 }

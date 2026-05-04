@@ -194,25 +194,17 @@ export async function processGenerateRequest(request, options = {}) {
         ) {
           throw new Error('生成结果过大：当前托管网关无法安全返回该图片，请降低尺寸或质量后重试。')
         }
-
-        try {
-          if (typeof options.onGenerated === 'function') {
-            await options.onGenerated(result)
-          }
-          return await finalizeSuccessfulGenerate({
-            store,
-            customer,
-            request,
-            config,
-            provider,
-            result,
-            requestId,
-            startedAt,
-            promptPreview,
-          })
-        } catch (generatedError) {
-          throw generatedError
-        }
+        return await finalizeSuccessfulGenerate({
+          store,
+          customer,
+          request,
+          config,
+          provider,
+          result,
+          requestId,
+          startedAt,
+          promptPreview,
+        })
       } catch (providerError) {
         const message = providerError instanceof Error ? providerError.message : String(providerError)
         if (/额度记账失败|试用额度记账失败|生成结果过大/.test(message)) {
