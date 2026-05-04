@@ -143,7 +143,7 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
 
   return (
     <div data-no-drag-select className="fixed inset-0 z-[70] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm animate-overlay-in" />
+      <div className="absolute inset-0 bg-black/30 animate-overlay-in" />
       <div
         className="relative z-10 w-full max-w-md rounded-3xl border border-white/50 bg-white/95 p-5 shadow-2xl ring-1 ring-black/5 animate-modal-in dark:border-white/[0.08] dark:bg-gray-900/95 dark:ring-white/10"
         onClick={(e) => e.stopPropagation()}
@@ -306,7 +306,6 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
                   onTouchStart={startHintTouch}
                   onTouchEnd={clearHintTimer}
                   onTouchCancel={hideHint}
-                  onClick={showHint}
                 >
                   <svg className="w-5 h-5 text-yellow-500 cursor-pointer" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />

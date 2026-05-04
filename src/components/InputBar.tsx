@@ -929,13 +929,12 @@ export default function InputBar() {
 
   const renderParams = (cols: string) => (
     <div className={`grid ${cols} gap-2 text-xs flex-1`}>
-      <label className="relative flex flex-col gap-0.5">
+      <div className="relative flex flex-col gap-0.5">
         {renderParamLabel('尺寸', 'size')}
         <button
           type="button"
           onClick={() => setShowSizePicker(true)}
           className="px-3 py-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white/50 dark:bg-white/[0.03] hover:bg-white dark:hover:bg-white/[0.06] focus:outline-none text-xs text-left transition-all duration-200 shadow-sm font-mono"
-          title="选择尺寸"
         >
           {displaySize}
         </button>
@@ -943,8 +942,8 @@ export default function InputBar() {
           visible={activeParamHint === 'size'}
           text="尺寸会在提交前被规整到模型可接受的安全范围。"
         />
-      </label>
-      <label className="relative flex flex-col gap-0.5">
+      </div>
+      <div className="relative flex flex-col gap-0.5">
         {renderParamLabel('质量', 'quality')}
         <Select
           value={params.quality}
@@ -956,8 +955,8 @@ export default function InputBar() {
           visible={activeParamHint === 'quality'}
           text="质量会按你的选择提交；最终以生成结果实际生效的参数为准。"
         />
-      </label>
-      <label className="flex flex-col gap-0.5">
+      </div>
+      <div className="flex flex-col gap-0.5">
         <span className="text-gray-400 dark:text-gray-500 ml-1">格式</span>
         <Select
           value={params.output_format}
@@ -969,8 +968,8 @@ export default function InputBar() {
           ]}
           className={selectClass}
         />
-      </label>
-      <label className="relative flex flex-col gap-0.5">
+      </div>
+      <div className="relative flex flex-col gap-0.5">
         {renderParamLabel('压缩率', 'compression')}
         <input
           value={outputCompressionInput}
@@ -991,8 +990,8 @@ export default function InputBar() {
           visible={activeParamHint === 'compression'}
           text="仅 JPEG 和 WebP 支持压缩率"
         />
-      </label>
-      <label className="relative flex flex-col gap-0.5">
+      </div>
+      <div className="relative flex flex-col gap-0.5">
         {renderParamLabel('审核', 'moderation')}
         <Select
           value={moderationDisabled ? 'auto' : params.moderation}
@@ -1012,8 +1011,8 @@ export default function InputBar() {
           visible={activeParamHint === 'moderation'}
           text="审核级别会随请求一起提交。"
         />
-      </label>
-      <label className="relative flex flex-col gap-0.5">
+      </div>
+      <div className="relative flex flex-col gap-0.5">
         {renderParamLabel('数量', 'quantity')}
         <input
           value={nInput}
@@ -1040,7 +1039,7 @@ export default function InputBar() {
           className="px-3 py-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-gray-100/60 dark:bg-white/[0.05] focus:outline-none text-xs transition-all duration-200 shadow-sm opacity-60 cursor-not-allowed"
         />
         <ButtonTooltip visible={activeParamHint === 'quantity'} text={quantityHintText} />
-      </label>
+      </div>
     </div>
   )
 
