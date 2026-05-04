@@ -2,7 +2,6 @@ import { processGenerateRequest } from '../server/gateway.js'
 
 const IMAGE_CHUNK_BASE64_SIZE = 128 * 1024
 const HEARTBEAT_INTERVAL_MS = 10_000
-const ENHANCED_SIZE_THRESHOLD = 1024
 
 function getErrorStatus(message) {
   return /登录状态已失效|session|401/i.test(message)
@@ -16,41 +15,6 @@ function getErrorStatus(message) {
 
 function createNdjsonLine(payload) {
   return `${JSON.stringify(payload)}\n`
-}
-
-function parseGenerateSize(size) {
-  if (typeof size !== 'string') {
-    return null
-  }
-
-  const match = size.trim().match(/^(\d+)\s*[xX×]\s*(\d+)$/)
-  if (!match) {
-    return null
-  }
-
-  const width = Number(match[1])
-  const height = Number(match[2])
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-    return null
-  }
-
-  return { width, height }
-}
-
-async function getRequestedSize(request) {
-  try {
-    const payload = await request.clone().json()
-    return parseGenerateSize(payload?.params?.size)
-  } catch {
-    return null
-  }
-}
-
-function isEnhancedGenerateRequest(size) {
-  if (!size) {
-    return false
-  }
-  return Math.min(size.width, size.height) > ENHANCED_SIZE_THRESHOLD
 }
 
 function parseDataUrl(dataUrl) {
@@ -99,15 +63,6 @@ function streamGeneratedImages(controller, encoder, result) {
       id: imageId,
     })
   }
-}
-
-function createJsonGenerateResponse(result) {
-  return new Response(JSON.stringify(result), {
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Cache-Control': 'no-store, no-cache, max-age=0',
-    },
-  })
 }
 
 function createGenerateErrorResponse(error) {
@@ -215,13 +170,7 @@ export default {
     }
 
     try {
-      const requestedSize = await getRequestedSize(request)
-      if (isEnhancedGenerateRequest(requestedSize)) {
-        return createEnhancedGenerateResponse(request)
-      }
-
-      const result = await processGenerateRequest(request)
-      return createJsonGenerateResponse(result)
+      return createEnhancedGenerateResponse(request)
     } catch (error) {
       return createGenerateErrorResponse(error)
     }
