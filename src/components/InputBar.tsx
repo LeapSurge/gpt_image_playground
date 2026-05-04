@@ -34,6 +34,8 @@ function useIsMobile() {
   return isMobile
 }
 
+type MobileTrayStage = 'collapsed' | 'editor' | 'advanced'
+
 export default function InputBar() {
   const prompt = useStore((s) => s.prompt)
   const setPrompt = useStore((s) => s.setPrompt)
@@ -125,7 +127,9 @@ export default function InputBar() {
   const [attachHover, setAttachHover] = useState(false)
   const [activeParamHint, setActiveParamHint] = useState<null | 'size' | 'quality' | 'compression' | 'moderation' | 'quantity'>(null)
   const [imageHintId, setImageHintId] = useState<string | null>(null)
-  const [mobileCollapsed, setMobileCollapsed] = useState(() => window.innerWidth < 640)
+  const [mobileTrayStage, setMobileTrayStage] = useState<MobileTrayStage>(() =>
+    window.innerWidth < 640 ? 'collapsed' : 'advanced',
+  )
   const [showSizePicker, setShowSizePicker] = useState(false)
   const [maskPreviewUrl, setMaskPreviewUrl] = useState('')
   const [imageDragIndex, setImageDragIndex] = useState<number | null>(null)
@@ -148,6 +152,9 @@ export default function InputBar() {
   const dragCounter = useRef(0)
   const isMobile = useIsMobile()
   const trimmedPrompt = prompt.trim()
+  const isMobileCollapsed = isMobile && mobileTrayStage === 'collapsed'
+  const isMobileAdvanced = isMobile && mobileTrayStage === 'advanced'
+  const mobileParamPanelVisible = isMobileAdvanced
 
   const isLoggedIn = session.status === 'authenticated' && Boolean(session.customer)
   const isAccountActive = isLoggedIn && session.customer?.status === 'active'
@@ -211,7 +218,19 @@ export default function InputBar() {
 
   const toggleMobileTray = useCallback(() => {
     if (!isMobile) return
-    setMobileCollapsed((value) => !value)
+    setMobileTrayStage((current) => {
+      if (current === 'collapsed') return 'editor'
+      if (current === 'advanced') return 'editor'
+      return 'collapsed'
+    })
+  }, [isMobile])
+
+  const toggleMobileParams = useCallback(() => {
+    if (!isMobile) return
+    setMobileTrayStage((current) => {
+      if (current === 'advanced') return 'editor'
+      return 'advanced'
+    })
   }, [isMobile])
 
   const canTrackTrayGesture = useCallback((target: EventTarget | null) => {
@@ -232,6 +251,17 @@ export default function InputBar() {
     }
   }, [canTrackTrayGesture, isMobile])
 
+  const handleTrayTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (!trayTouchRef.current.tracking || !isMobile) return
+
+    const touch = e.touches[0]
+    const deltaX = touch.clientX - trayTouchRef.current.startX
+    const deltaY = touch.clientY - trayTouchRef.current.startY
+    if (Math.abs(deltaY) < 8 || Math.abs(deltaY) <= Math.abs(deltaX)) return
+
+    e.preventDefault()
+  }, [isMobile])
+
   const handleTrayTouchEnd = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
     if (!trayTouchRef.current.tracking || !isMobile) return
     trayTouchRef.current.tracking = false
@@ -240,12 +270,20 @@ export default function InputBar() {
     const deltaY = touch.clientY - trayTouchRef.current.startY
     if (Math.abs(deltaY) < 36 || Math.abs(deltaY) <= Math.abs(deltaX)) return
 
-    if (deltaY < 0 && mobileCollapsed) {
-      setMobileCollapsed(false)
-    } else if (deltaY > 0 && !mobileCollapsed) {
-      setMobileCollapsed(true)
+    if (deltaY < 0) {
+      setMobileTrayStage((current) => {
+        if (current === 'collapsed') return 'editor'
+        if (current === 'editor') return 'advanced'
+        return current
+      })
+    } else if (deltaY > 0) {
+      setMobileTrayStage((current) => {
+        if (current === 'advanced') return 'editor'
+        if (current === 'editor') return 'collapsed'
+        return current
+      })
     }
-  }, [isMobile, mobileCollapsed])
+  }, [isMobile])
 
   useEffect(() => {
     setOutputCompressionInput(
@@ -559,11 +597,20 @@ export default function InputBar() {
 
     // 计算图片区域和其他固定元素占用的高度
     const imagesHeight = imagesRef.current?.offsetHeight ?? 0
-    const fixedOverhead = imagesHeight + (isMobile ? (mobileCollapsed ? 118 : 210) : 140)
-    const minH = isMobile ? (mobileCollapsed ? 48 : 116) : 42
+    const mobileFixedOverhead =
+      mobileTrayStage === 'collapsed' ? 118 : mobileTrayStage === 'advanced' ? 210 : 154
+    const fixedOverhead = imagesHeight + (isMobile ? mobileFixedOverhead : 140)
+    const minH =
+      isMobile
+        ? mobileTrayStage === 'collapsed'
+          ? 48
+          : mobileTrayStage === 'advanced'
+            ? 116
+            : 92
+        : 42
 
     // textarea 最大高度 = 页面 40% 减去固定开销；收起态保持固定高度。
-    const maxH = mobileCollapsed && isMobile
+    const maxH = isMobile && mobileTrayStage === 'collapsed'
       ? minH
       : Math.max(window.innerHeight * 0.4 - fixedOverhead, minH)
 
@@ -585,7 +632,7 @@ export default function InputBar() {
     el.style.overflowY = desired > maxH ? 'auto' : 'hidden'
 
     prevHeightRef.current = targetH
-  }, [isMobile, mobileCollapsed])
+  }, [isMobile, mobileTrayStage])
 
   useEffect(() => {
     adjustTextareaHeight()
@@ -598,7 +645,7 @@ export default function InputBar() {
 
   useEffect(() => {
     adjustTextareaHeight()
-  }, [mobileCollapsed, isMobile, adjustTextareaHeight])
+  }, [mobileTrayStage, isMobile, adjustTextareaHeight])
 
   useEffect(() => {
     window.addEventListener('resize', adjustTextareaHeight)
@@ -607,7 +654,7 @@ export default function InputBar() {
 
   useEffect(() => {
     if (!isMobile) {
-      setMobileCollapsed(false)
+      setMobileTrayStage('advanced')
     }
   }, [isMobile])
 
@@ -617,7 +664,7 @@ export default function InputBar() {
       return
     }
     if (tasks.length > previousTaskCountRef.current) {
-      setMobileCollapsed(true)
+      setMobileTrayStage('collapsed')
     }
     previousTaskCountRef.current = tasks.length
   }, [isMobile, tasks.length])
@@ -1150,35 +1197,35 @@ export default function InputBar() {
         <div
           ref={cardRef}
           onTouchStart={handleTrayTouchStart}
+          onTouchMove={handleTrayTouchMove}
           onTouchEnd={handleTrayTouchEnd}
           className={`bg-white/70 dark:bg-gray-900/70 backdrop-blur-2xl border border-white/50 dark:border-white/[0.08] shadow-[0_8px_30px_rgb(0,0,0,0.08)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.3)] ring-1 ring-black/5 dark:ring-white/10 transition-[padding,border-radius] duration-200 ${
             isMobile
-              ? mobileCollapsed
+              ? isMobileCollapsed
                 ? 'rounded-[28px] px-3 py-2.5'
                 : 'rounded-[30px] px-3 py-3.5'
               : 'rounded-3xl p-4'
           }`}
         >
-          <button
-            type="button"
-            className="sm:hidden mb-2 flex w-full justify-center rounded-2xl py-1"
-            onClick={toggleMobileTray}
-            aria-expanded={!mobileCollapsed}
-            aria-label={mobileCollapsed ? '展开创作托盘' : '收起创作托盘'}
+          <div
+            className="sm:hidden mb-2 flex w-full touch-none justify-center rounded-2xl py-1"
+            onTouchStart={handleTrayTouchStart}
+            onTouchMove={handleTrayTouchMove}
+            onTouchEnd={handleTrayTouchEnd}
           >
-            <span className="h-1.5 w-11 rounded-full bg-gray-300/90 dark:bg-white/[0.18]" />
-          </button>
+            <span aria-hidden="true" className="h-1.5 w-11 rounded-full bg-gray-300/90 dark:bg-white/[0.18]" />
+          </div>
 
           {/* 输入图片行（移动端可折叠） */}
           {inputImages.length > 0 && (
             isMobile ? (
               <>
-                <div className={`collapse-section${mobileCollapsed ? ' collapsed' : ''}`}>
+                <div className={`collapse-section${isMobileCollapsed ? ' collapsed' : ''}`}>
                   <div className="collapse-inner">
                     {renderImageThumbs()}
                   </div>
                 </div>
-                {mobileCollapsed && (
+                {isMobileCollapsed && (
                   <div className="mb-2 rounded-2xl border border-gray-200/70 bg-white/70 px-3 py-2 text-xs text-gray-500 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-400">
                     {mobileImageSummary}
                   </div>
@@ -1193,7 +1240,7 @@ export default function InputBar() {
           <div
             className={`rounded-[24px] border transition-[border-color,box-shadow,background-color] duration-200 ${
               isMobile
-                ? mobileCollapsed
+                ? isMobileCollapsed
                   ? 'border-gray-200/80 bg-white/96 px-4 py-3 shadow-[0_6px_18px_rgba(15,23,42,0.06)] dark:border-white/[0.08] dark:bg-white/[0.05]'
                   : 'border-gray-300/80 bg-white/94 px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)] dark:border-white/[0.1] dark:bg-white/[0.06]'
                 : 'border-gray-200/60 bg-white/50 px-4 py-3 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.03]'
@@ -1204,8 +1251,8 @@ export default function InputBar() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onFocus={() => {
-                if (isMobile && mobileCollapsed) {
-                  setMobileCollapsed(false)
+                if (isMobile && mobileTrayStage === 'collapsed') {
+                  setMobileTrayStage('editor')
                 }
               }}
               onKeyDown={handleKeyDown}
@@ -1213,7 +1260,7 @@ export default function InputBar() {
               placeholder="描述你想生成的画面，或先选一个案例"
               className={`w-full resize-none bg-transparent text-gray-900 transition-[border-color,box-shadow] duration-200 focus:outline-none dark:text-gray-100 ${
                 isMobile
-                  ? mobileCollapsed
+                  ? isMobileCollapsed
                     ? 'min-h-12 text-[14px] leading-6'
                     : 'min-h-[7.25rem] text-[15px] leading-7'
                   : 'min-h-0 text-sm leading-relaxed'
@@ -1284,29 +1331,54 @@ export default function InputBar() {
 
             {/* 移动端布局 */}
             <div className="sm:hidden flex flex-col gap-2">
-              <div className={`collapse-section${mobileCollapsed ? ' collapsed' : ''}`}>
+              <div className={`flex items-center gap-2 ${session.status === 'anonymous' && session.trial ? 'justify-between' : 'justify-start'}`}>
+                <div
+                  className={`flex min-w-0 flex-1 items-center rounded-xl border transition ${
+                    mobileParamPanelVisible
+                      ? 'border-gray-300/80 bg-white text-gray-700 shadow-sm dark:border-white/[0.12] dark:bg-white/[0.08] dark:text-gray-200'
+                      : 'border-gray-200/70 bg-white/70 text-gray-500 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-400'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={toggleMobileTray}
+                    aria-expanded={!isMobileCollapsed}
+                    aria-label={isMobileCollapsed ? '展开编辑区' : '收起一层'}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-l-xl"
+                  >
+                    <svg
+                      className={`h-4 w-4 transition-transform ${isMobileCollapsed ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleMobileParams}
+                    aria-expanded={mobileParamPanelVisible}
+                    aria-label={mobileParamPanelVisible ? '收起参数设置' : '展开参数设置'}
+                    className="flex min-w-0 flex-1 items-center py-1.5 pr-2.5 text-[11px]"
+                  >
+                    <span className="truncate">{mobileParamSummary}</span>
+                  </button>
+                </div>
+                {session.status === 'anonymous' && session.trial && (
+                  <div className="shrink-0 px-1 text-[11px] text-gray-500 dark:text-gray-400">
+                    试用剩余 {session.trial.remainingCredits}/{session.trial.limit}
+                  </div>
+                )}
+              </div>
+
+              <div className={`collapse-section${mobileParamPanelVisible ? '' : ' collapsed'}`}>
                 <div className="collapse-inner">
                   <div className="rounded-2xl border border-gray-200/80 bg-gray-50/90 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
-                    <div className="mb-2">
-                      <div className="inline-flex items-center rounded-full border border-gray-200/80 bg-white px-2.5 py-1 text-[10px] font-semibold tracking-[0.14em] text-gray-600 ring-1 ring-gray-200/60 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-gray-200 dark:ring-white/[0.08]">
-                        高级参数
-                      </div>
-                    </div>
                     {renderParams('grid-cols-2')}
                   </div>
                   <div className="h-2" />
                 </div>
-              </div>
-
-              <div className={`flex items-center gap-3 px-1 text-[11px] ${session.status === 'anonymous' && session.trial ? 'justify-between' : 'justify-end'}`}>
-                <div className="min-w-0 truncate text-gray-400 dark:text-gray-500">
-                  {mobileParamSummary}
-                </div>
-                {session.status === 'anonymous' && session.trial && (
-                  <div className="shrink-0 text-gray-500 dark:text-gray-400">
-                    试用剩余 {session.trial.remainingCredits}/{session.trial.limit}
-                  </div>
-                )}
               </div>
 
               <div className="flex items-center gap-2">
