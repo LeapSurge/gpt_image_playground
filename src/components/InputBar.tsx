@@ -118,6 +118,7 @@ export default function InputBar() {
   const imagesRef = useRef<HTMLDivElement>(null)
   const prevHeightRef = useRef(42)
   const trayTouchRef = useRef({ startX: 0, startY: 0, tracking: false })
+  const previousTaskCountRef = useRef(tasks.length)
 
   const [isDragging, setIsDragging] = useState(false)
   const [submitHover, setSubmitHover] = useState(false)
@@ -609,6 +610,17 @@ export default function InputBar() {
       setMobileCollapsed(false)
     }
   }, [isMobile])
+
+  useEffect(() => {
+    if (!isMobile) {
+      previousTaskCountRef.current = tasks.length
+      return
+    }
+    if (tasks.length > previousTaskCountRef.current) {
+      setMobileCollapsed(true)
+    }
+    previousTaskCountRef.current = tasks.length
+  }, [isMobile, tasks.length])
 
   const selectClass = 'px-3 py-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white/50 dark:bg-white/[0.03] hover:bg-white dark:hover:bg-white/[0.06] text-xs transition-all duration-200 shadow-sm'
 

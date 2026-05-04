@@ -5,7 +5,6 @@ export interface StarterExample {
   level: '入门' | '热门' | '高级'
   needsReference: boolean
   prompt: string
-  toast: string
 }
 
 const STARTER_EXAMPLES: StarterExample[] = [
@@ -19,7 +18,6 @@ const STARTER_EXAMPLES: StarterExample[] = [
       '一张完美修复的旧家庭照片，写实照片修复，保留原有姿势和构图，保持人物面部特征，去除划痕、灰尘、污渍、折痕、模糊、眩光和水印文字，修复破损相纸，恢复自然肤色，清晰的面部特征，发丝细节分明，衣物纹理细致，亮度均衡，对比度柔和，渐变平滑，色彩逼真，保留微妙的复古色调，锐利但不过度处理，高分辨率，影楼级修复品质。',
       '避免：卡通、动漫、绘画、插画、3D、CGI、假皮肤、塑料脸、过度光滑的皮肤、过度锐化、多余手指、畸形手部、扭曲面部、错误眼睛、不对称面部、人物重复、添加的配饰、更换衣物、改变发型、浓妆、现代时尚、文字、标志、水印、相框、边框、伪影、噪点、过饱和、极端对比度、模糊。',
     ].join('\n\n'),
-    toast: '已填入“修复老照片”示例，请先上传需要修复的照片。',
   },
   {
     id: 'doodle-overlay',
@@ -36,7 +34,6 @@ const STARTER_EXAMPLES: StarterExample[] = [
       '装饰：适度加入热气、闪光、爱心、星星、小表情等元素，但不要过度装饰，保留留白空间。',
       '完成风格：像 Instagram 限时动态、杂志随手笔记风，自然、有质感、带点慵懒感。',
     ].join('\n\n'),
-    toast: '已填入“涂鸦叠加图”示例，请先上传一张照片再生成。',
   },
   {
     id: 'ad-poster',
@@ -45,7 +42,6 @@ const STARTER_EXAMPLES: StarterExample[] = [
     level: '入门',
     needsReference: false,
     prompt: '为一家咖啡店设计促销海报，主视觉是一杯冰美式和咖啡豆，画面简洁高级，留出标题和价格位置，适合社交媒体宣传。',
-    toast: '已填入“广告海报”示例，可以直接修改后生成。',
   },
   {
     id: 'product-shot',
@@ -54,7 +50,6 @@ const STARTER_EXAMPLES: StarterExample[] = [
     level: '入门',
     needsReference: false,
     prompt: '一款极简风格的保温杯产品图，纯色背景，柔和棚拍光线，突出材质和轮廓，画面干净，适合商品展示。',
-    toast: '已填入“商品图”示例，可以直接修改后生成。',
   },
   {
     id: 'cover-visual',
@@ -63,7 +58,6 @@ const STARTER_EXAMPLES: StarterExample[] = [
     level: '热门',
     needsReference: false,
     prompt: '一张适合短视频封面的城市夜景图，霓虹灯、雨夜反光、强烈视觉冲击，构图简洁，主体明确，适合加标题文字。',
-    toast: '已填入“封面配图”示例，可以直接修改后生成。',
   },
   {
     id: 'calendar-poster',
@@ -72,7 +66,6 @@ const STARTER_EXAMPLES: StarterExample[] = [
     level: '高级',
     needsReference: false,
     prompt: '{"type":"插画月历海报","orientation":"纵向","month":"2026-05","style":"柔和可爱的日式绘本月历海报，可打印，高分辨率","scene":"蓝天、云朵、城市河岸、樱花、草地边框","characters":["兔子穿企鹅连体装","休闲装年轻女性","两只成年企鹅","一只灰色企鹅幼崽"],"layout":"上半部分为大型插画，下半部分为清晰宽敞的 2026 年 5 月日历表格，周日红色，周六蓝色，标记劳动节、青年节、五一假期"}',
-    toast: '已填入“定制月历海报”示例，可以直接生成。',
   },
 ]
 

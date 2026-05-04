@@ -11,6 +11,7 @@ interface Props {
   onDelete: () => void
   onClick: (e: React.MouseEvent | React.TouchEvent) => void
   isSelected?: boolean
+  variant?: 'default' | 'focus'
 }
 
 export default function TaskCard({
@@ -20,6 +21,7 @@ export default function TaskCard({
   onDelete,
   onClick,
   isSelected,
+  variant = 'default',
 }: Props) {
   const [thumbSrc, setThumbSrc] = useState<string>('')
   const [coverRatio, setCoverRatio] = useState<string>('')
@@ -168,6 +170,7 @@ export default function TaskCard({
   const showSwipeAction = isSwipeReady || swipeActionActive
   const isFalReconnecting = task.status === 'error' && task.falRecoverable
   const showRunningTimer = task.status === 'running' || isFalReconnecting
+  const isFocusCard = variant === 'focus'
   const swipeBgClass = showSwipeAction
     ? swipeStartedSelected
       ? 'bg-gray-500 dark:bg-gray-600'
@@ -198,9 +201,13 @@ export default function TaskCard({
           !isSwiping ? 'transition-[box-shadow,border-color,background-color,transform]' : 'transition-[box-shadow,border-color,background-color]'
         } ${
           task.status === 'running'
-            ? 'border-blue-400 generating'
+            ? isFocusCard
+              ? 'border-gray-300 shadow-[0_12px_30px_rgba(15,23,42,0.10)] generating dark:border-white/[0.12]'
+              : 'border-blue-400 generating'
             : isSelected
             ? 'border-blue-500 shadow-md ring-2 ring-blue-500/50'
+            : isFocusCard
+            ? 'border-gray-200 shadow-[0_12px_28px_rgba(15,23,42,0.08)] dark:border-white/[0.08] hover:border-gray-300 dark:hover:border-white/[0.18]'
             : 'border-gray-200 dark:border-white/[0.08] hover:border-gray-300 dark:hover:border-white/[0.18]'
         }`}
         style={{
@@ -227,9 +234,9 @@ export default function TaskCard({
           </svg>
         </div>
       )}
-      <div className="flex h-40">
+      <div className={isFocusCard ? 'flex flex-col sm:flex-row sm:h-48' : 'flex h-40'}>
         {/* 左侧图片区域 */}
-        <div className="w-40 min-w-[10rem] h-full bg-gray-100 dark:bg-black/20 relative flex items-center justify-center overflow-hidden flex-shrink-0">
+        <div className={`${isFocusCard ? 'h-44 w-full sm:h-full sm:w-48 sm:min-w-[12rem]' : 'w-40 min-w-[10rem] h-full'} bg-gray-100 dark:bg-black/20 relative flex items-center justify-center overflow-hidden flex-shrink-0`}>
           {task.status === 'running' && (
             <div className="flex flex-col items-center gap-2">
               <svg
@@ -347,13 +354,13 @@ export default function TaskCard({
         </div>
 
         {/* 右侧信息区域 */}
-        <div className="flex-1 p-3 flex flex-col min-w-0">
-          <div className="flex-1 min-h-0 mb-2">
-            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed line-clamp-3">
+        <div className={`${isFocusCard ? 'p-4 sm:p-4' : 'p-3'} flex-1 flex flex-col min-w-0`}>
+          <div className={`flex-1 min-h-0 ${isFocusCard ? 'mb-3' : 'mb-2'}`}>
+            <p className={`text-gray-700 dark:text-gray-300 leading-relaxed ${isFocusCard ? 'text-[15px] line-clamp-4' : 'text-sm line-clamp-3'}`}>
               {task.prompt || '(无提示词)'}
             </p>
           </div>
-          <div className="mt-auto flex flex-col gap-1.5">
+          <div className={`mt-auto flex flex-col ${isFocusCard ? 'gap-2' : 'gap-1.5'}`}>
             {/* 参数：横向滚动 */}
             <div className="flex overflow-x-auto hide-scrollbar gap-1.5 whitespace-nowrap mask-edge-r min-w-0 pr-2">
               <ParamValue task={task} paramKey="quality" className="text-xs px-1.5 py-0.5 rounded flex-shrink-0" />

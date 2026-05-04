@@ -6,6 +6,7 @@ import Header from './components/Header'
 import SearchBar from './components/SearchBar'
 import TaskGrid from './components/TaskGrid'
 import InputBar from './components/InputBar'
+import FirstImageStarter, { type StarterExample } from './components/FirstImageStarter'
 import DetailModal from './components/DetailModal'
 import Lightbox from './components/Lightbox'
 import SettingsModal from './components/SettingsModal'
@@ -17,6 +18,7 @@ import AuthModal from './components/AuthModal'
 
 export default function App() {
   const tasks = useStore((s) => s.tasks)
+  const setPrompt = useStore((s) => s.setPrompt)
   const [showStarter, setShowStarter] = useState(false)
   const previousTaskCountRef = useRef(tasks.length)
 
@@ -44,13 +46,39 @@ export default function App() {
     return () => document.removeEventListener('dragstart', preventPageImageDrag)
   }, [])
 
+  const handleApplyStarter = (example: StarterExample) => {
+    setPrompt(example.prompt)
+    setShowStarter(false)
+    window.setTimeout(() => {
+      const inputBar = document.querySelector('[data-input-bar]') as HTMLElement | null
+      const textarea = inputBar?.querySelector('textarea') as HTMLTextAreaElement | null
+      if (!textarea) return
+      textarea.focus({ preventScroll: true })
+      const end = textarea.value.length
+      textarea.setSelectionRange(end, end)
+    }, 80)
+  }
+
   return (
     <>
       <Header />
       <main data-home-main data-drag-select-surface className="pb-48">
         <div className="safe-area-x max-w-7xl mx-auto">
-          {tasks.length > 0 && <SearchBar showStarter={showStarter} onToggleStarter={() => setShowStarter((value) => !value)} />}
-          <TaskGrid showStarter={showStarter} onApplyStarter={() => setShowStarter(false)} />
+          {tasks.length > 0 && (
+            <>
+              <SearchBar
+                showStarter={showStarter}
+                onToggleStarter={() => setShowStarter((value) => !value)}
+              />
+              {showStarter && (
+                <div className="mb-4">
+                  <FirstImageStarter mode="compact" onApply={handleApplyStarter} />
+                </div>
+              )}
+            </>
+          )}
+          {tasks.length === 0 && <FirstImageStarter onApply={handleApplyStarter} />}
+          <TaskGrid />
         </div>
       </main>
       <InputBar />
