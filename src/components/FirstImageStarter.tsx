@@ -94,11 +94,10 @@ export default function FirstImageStarter({ mode = 'full', onApply }: FirstImage
       <section className="rounded-[24px] border border-white/60 bg-white/80 p-4 shadow-[0_12px_40px_rgba(15,23,42,0.06)] backdrop-blur-xl dark:border-white/[0.08] dark:bg-gray-900/70 dark:shadow-[0_12px_40px_rgba(0,0,0,0.22)]">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-semibold tracking-[0.16em] text-blue-500 dark:text-blue-300">继续试试</p>
-            <h2 className="mt-1 text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">换个方向继续生成</h2>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">这里保留常用案例。选一个方向，直接替换到底部输入框。</p>
+            <p className="text-xs font-semibold tracking-[0.16em] text-blue-500 dark:text-blue-300">换个方向</p>
+            <h2 className="mt-1 text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">再试一个新的效果</h2>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">选一个接近的案例，填入后继续修改。</p>
           </div>
-          <div className="text-xs text-gray-400 dark:text-gray-500">更像灵感补充，不打断当前结果</div>
         </div>
 
         <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -120,7 +119,7 @@ export default function FirstImageStarter({ mode = 'full', onApply }: FirstImage
                   <p className="mt-1 line-clamp-1 text-xs text-gray-500 dark:text-gray-400">{example.subtitle}</p>
                 </div>
                 <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600 dark:bg-white/[0.06] dark:text-gray-300">
-                  {example.needsReference ? '参考图' : '直接生成'}
+                  {example.needsReference ? '需参考图' : '可直接生成'}
                 </span>
               </div>
             </button>
@@ -135,17 +134,14 @@ export default function FirstImageStarter({ mode = 'full', onApply }: FirstImage
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold tracking-[0.18em] text-blue-500 dark:text-blue-300">
-            首图案例辅助
+            从案例开始
           </p>
           <h2 className="mt-1 text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
-            不会写提示词，先试一个案例
+            先选一个接近的效果
           </h2>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            点击示例会直接填入输入框。你只需要改几个词，就能开始生成第一张图。
+            点一下就会填入输入框，改几个词就能开始生成。
           </p>
-        </div>
-        <div className="text-xs text-gray-400 dark:text-gray-500">
-          先写主体，再补风格和场景
         </div>
       </div>
 
@@ -174,10 +170,10 @@ export default function FirstImageStarter({ mode = 'full', onApply }: FirstImage
 
             <div className="mt-3 flex items-center justify-between gap-3">
               <span className="text-xs text-gray-400 dark:text-gray-500">
-                {example.needsReference ? '先填入，再上传图片' : '先填入，再改几个词'}
+                {example.needsReference ? '填入后先上传图片' : '填入后继续修改'}
               </span>
               <span className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-300">
-                一键填入
+                填入案例
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
@@ -216,9 +212,6 @@ export default function FirstImageStarter({ mode = 'full', onApply }: FirstImage
               <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] text-gray-600 dark:bg-white/[0.06] dark:text-gray-300">
                 {example.needsReference ? '需上传参考图' : '可直接生成'}
               </span>
-              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] text-gray-600 dark:bg-white/[0.06] dark:text-gray-300">
-                点击一键填入
-              </span>
             </div>
 
             <div className="mt-4 line-clamp-4 text-sm leading-6 text-gray-600 dark:text-gray-300">
@@ -226,7 +219,7 @@ export default function FirstImageStarter({ mode = 'full', onApply }: FirstImage
             </div>
 
             <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-600 transition-colors group-hover:text-blue-700 dark:text-blue-300 dark:group-hover:text-blue-200">
-              使用这个案例
+              填入案例
               <svg
                 className="h-4 w-4"
                 fill="none"

@@ -1211,7 +1211,7 @@ export default function InputBar() {
               }}
               onKeyDown={handleKeyDown}
               rows={1}
-              placeholder="先写主体，再补风格和场景；不会写可先点上方案例"
+              placeholder="描述你想生成的画面，或先选一个案例"
               className={`w-full resize-none bg-transparent text-gray-900 transition-[border-color,box-shadow] duration-200 focus:outline-none dark:text-gray-100 ${
                 isMobile
                   ? mobileCollapsed

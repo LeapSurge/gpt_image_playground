@@ -944,7 +944,7 @@ export async function reuseConfig(task: TaskRecord) {
   } else {
     clearMaskDraft()
   }
-  showToast('已复用配置到输入框', 'success')
+  showToast('原任务设置已填入，可继续修改', 'success')
 }
 
 /** 编辑输出：将输出图加入输入 */

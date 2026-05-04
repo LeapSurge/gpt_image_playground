@@ -19,6 +19,7 @@ import AuthModal from './components/AuthModal'
 export default function App() {
   const tasks = useStore((s) => s.tasks)
   const setPrompt = useStore((s) => s.setPrompt)
+  const showToast = useStore((s) => s.showToast)
   const [showStarter, setShowStarter] = useState(false)
   const previousTaskCountRef = useRef(tasks.length)
 
@@ -49,6 +50,10 @@ export default function App() {
   const handleApplyStarter = (example: StarterExample) => {
     setPrompt(example.prompt)
     setShowStarter(false)
+    showToast(
+      example.needsReference ? '案例已填入，请先添加参考图' : '案例已填入，可继续修改或直接生成',
+      'success',
+    )
     window.setTimeout(() => {
       const inputBar = document.querySelector('[data-input-bar]') as HTMLElement | null
       const textarea = inputBar?.querySelector('textarea') as HTMLTextAreaElement | null
