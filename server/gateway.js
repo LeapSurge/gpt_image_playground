@@ -159,6 +159,7 @@ export async function processGenerateRequest(request, options = {}) {
     }
 
     const payload = validateGenerateRequest(await readJsonBody(request, config.maxRequestBodyBytes))
+    const requiresEdit = payload.inputImageDataUrls.length > 0 || Boolean(payload.maskDataUrl)
     const inputBytes = getInputImageByteSize(payload)
     devLog('generate', 'request-ready', {
       requestId,
@@ -181,8 +182,15 @@ export async function processGenerateRequest(request, options = {}) {
     const store = getManagedGatewayStore()
     const attemptErrors = []
     const promptPreview = buildPromptPreview(payload.prompt)
+    const eligibleProviders = requiresEdit
+      ? config.providers.filter((provider) => provider.supportsEdits !== false)
+      : config.providers
 
-    for (const provider of config.providers) {
+    if (requiresEdit && !eligibleProviders.length) {
+      throw new Error('当前上游暂不支持参考图编辑（图生图），请移除参考图后重试，或切换到支持 images/edits 的上游。')
+    }
+
+    for (const provider of eligibleProviders) {
       try {
         const result = await invokeOpenAICompatibleProvider(provider, payload, { requestId })
         const estimatedRemainingCredits = customer

@@ -15,6 +15,20 @@ function readIntEnv(name, fallback) {
   return Number.isFinite(value) ? value : fallback
 }
 
+function readBooleanEnv(name, fallback) {
+  const value = readEnv(name, '')
+  if (!value) return fallback
+  return /^(1|true|yes|on)$/i.test(value)
+}
+
+function inferSupportsEdits(baseUrl) {
+  try {
+    return !/xtokenapi\.cn$/i.test(new URL(baseUrl).hostname)
+  } catch {
+    return true
+  }
+}
+
 function createProviderConfig(slot) {
   const prefix = `MANAGED_GATEWAY_${slot}_`
   const baseUrl = readEnv(`${prefix}BASE_URL`, '').replace(/\/+$/, '')
@@ -29,6 +43,7 @@ function createProviderConfig(slot) {
     apiKey,
     model: readEnv(`${prefix}MODEL`, 'gpt-image-2'),
     timeoutSeconds: readIntEnv(`${prefix}TIMEOUT_SECONDS`, DEFAULT_REQUEST_TIMEOUT_SECONDS),
+    supportsEdits: readBooleanEnv(`${prefix}SUPPORTS_EDITS`, inferSupportsEdits(baseUrl)),
   }
 }
 
